@@ -143,9 +143,10 @@
     // <o>the history lines of finsh thread <1-32>
     //  <i>the history lines of finsh thread
     //  <i>Default: 5
-    #define FINSH_HISTORY_LINES         1
+    #define FINSH_HISTORY_LINES         5
 
     #define FINSH_USING_SYMTAB
+    #define FINSH_USING_HISTORY
     // </h>
 #endif
 

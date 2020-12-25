@@ -21,11 +21,21 @@ static struct rt_semaphore rx_sem;
 /* modbus */
 static rt_uint8_t ctx_send_buf[AGILE_MODBUS_MAX_ADU_LENGTH];
 static rt_uint8_t ctx_read_buf[AGILE_MODBUS_MAX_ADU_LENGTH];
+static rt_uint32_t send_count = 0;
+static rt_uint32_t success_count = 0;
 
 /* 线程 */
 static rt_uint8_t _thread_stack[512];
 static struct rt_thread _thread;
 
+
+static int get_rtu_master_info(void)
+{
+    LOG_I("send_cnt:%u, success_cnt:%u", send_count, success_count);
+
+    return RT_EOK;
+}
+MSH_CMD_EXPORT(get_rtu_master_info, get rtu master info);
 
 static int _usart_receive(rt_uint8_t *read_buf, int read_bufsz, int timeout)
 {
@@ -82,12 +92,15 @@ static void rtu_master_entry(void *parameter)
     {
         rt_thread_mdelay(1000);
 
+        send_count++;
         int send_len = agile_modbus_serialize_read_registers(&(ctx._ctx), 0, 10);
         int read_len = _usart_pass(ctx._ctx.send_buf, send_len, ctx._ctx.read_buf, ctx._ctx.read_bufsz, 1000);
         int rc = agile_modbus_deserialize_read_registers(&(ctx._ctx), read_len, hold_register);
 
-        if(rc > 0)
+        if(rc == 10)
         {
+            success_count++;
+
             LOG_I("read %d hold registers", rc);
             
             rt_kprintf("values:\r\n");
