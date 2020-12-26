@@ -7,8 +7,8 @@ ALIGN(RT_ALIGN_SIZE)
 /* 串口 */
 static rt_uint8_t init_ok = 0;
 static usr_driver_t drv = RT_NULL;
-static rt_uint8_t usart_send_buf[5120];
-static rt_uint8_t usart_read_buf[256];
+static rt_uint8_t usart_send_buf[2048];
+static rt_uint8_t usart_read_buf[16];
 static struct rt_semaphore rx_sem;
 
 static rt_err_t rx_indicate(usr_driver_t drv, rt_size_t size)

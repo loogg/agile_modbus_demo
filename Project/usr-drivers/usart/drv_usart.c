@@ -111,6 +111,8 @@ static rt_size_t _usart_write(usr_driver_t drv, rt_off_t pos, const void *buffer
 
     if(!usart->init_ok)
         return 0;
+    if(usart->error_cnt >= USR_DRIVER_USART_MAX_ERROR_CNT)
+        return 0;
     if(size <= 0)
         return size;
     
@@ -424,11 +426,8 @@ static void drv_usart_monitor(void)
             usart->reset_flag = 1;
         rt_hw_interrupt_enable(level);
 
-        if(usart->error_cnt >= 3)
-        {
-            usart->error_cnt = 0;
+        if(usart->error_cnt >= USR_DRIVER_USART_MAX_ERROR_CNT)
             usart->reset_flag = 1;
-        }
 
         if(usart->reset_flag)
         {
@@ -439,7 +438,6 @@ static void drv_usart_monitor(void)
                     break;
                 
                 _usart_init(&(usart->parent));
-                usart->reset_flag = 0;
             }while(0);
             rt_hw_interrupt_enable(level);
         }

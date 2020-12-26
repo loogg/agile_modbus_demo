@@ -5,6 +5,7 @@
 
 #define USR_DRIVER_USART_RX_TIMEOUT             60
 #define USR_DRIVER_USART_TX_ACTIVATED_TIMEOUT   10
+#define USR_DRIVER_USART_MAX_ERROR_CNT          3
 
 #define USR_DRIVER_USART_PARAMETER_DEFAULT  \
     {                                       \
