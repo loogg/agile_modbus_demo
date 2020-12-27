@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2006-2018, RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Change Logs:
+ * Date           Author       Notes
+ */
 #ifndef RINGBUFFER_H__
 #define RINGBUFFER_H__
 
@@ -66,6 +74,11 @@ rt_size_t rt_ringbuffer_get(struct rt_ringbuffer *rb, rt_uint8_t *ptr, rt_uint16
 rt_size_t rt_ringbuffer_peak(struct rt_ringbuffer *rb, rt_uint8_t **ptr);
 rt_size_t rt_ringbuffer_getchar(struct rt_ringbuffer *rb, rt_uint8_t *ch);
 rt_size_t rt_ringbuffer_data_len(struct rt_ringbuffer *rb);
+
+#ifdef RT_USING_HEAP
+struct rt_ringbuffer* rt_ringbuffer_create(rt_uint16_t length);
+void rt_ringbuffer_destroy(struct rt_ringbuffer *rb);
+#endif
 
 rt_inline rt_uint16_t rt_ringbuffer_get_size(struct rt_ringbuffer *rb)
 {

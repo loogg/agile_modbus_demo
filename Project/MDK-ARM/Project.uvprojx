@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F103xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\usr-drivers;..\usr-drivers\gpio;..\usr-drivers\usart;..\usr-drivers\usart\config;..\modules\init_module;..\modules\ring;..\modules\main_hook;..\modules\runtime;..\modules\rtu_master;..\modules\console;..\packages\agile_modbus\inc</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\usr-drivers;..\usr-drivers\gpio;..\usr-drivers\usart;..\usr-drivers\usart\config;..\modules\init_module;..\modules\ring;..\modules\main_hook;..\modules\runtime;..\modules\rtu_master;..\modules\console;..\modules\at\include;..\modules\wifi;..\modules\key;..\modules\led;..\packages\agile_modbus\inc;..\packages\agile_led\inc;..\packages\agile_button\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -563,6 +563,46 @@
               <FileType>1</FileType>
               <FilePath>..\modules\rtu_master\rtu_master.c</FilePath>
             </File>
+            <File>
+              <FileName>at_cli.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\at\src\at_cli.c</FilePath>
+            </File>
+            <File>
+              <FileName>at_client.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\at\src\at_client.c</FilePath>
+            </File>
+            <File>
+              <FileName>at_utils.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\at\src\at_utils.c</FilePath>
+            </File>
+            <File>
+              <FileName>wifi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\wifi\wifi.c</FilePath>
+            </File>
+            <File>
+              <FileName>key.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\key\key.c</FilePath>
+            </File>
+            <File>
+              <FileName>led.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\led\led.c</FilePath>
+            </File>
+            <File>
+              <FileName>ringblk_buf.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\ring\ringblk_buf.c</FilePath>
+            </File>
+            <File>
+              <FileName>wifi_tcp_slave.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\wifi\wifi_tcp_slave.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -582,6 +622,26 @@
               <FileName>agile_modbus_tcp.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\packages\agile_modbus\src\agile_modbus_tcp.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>agile_led</GroupName>
+          <Files>
+            <File>
+              <FileName>agile_led.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\packages\agile_led\src\agile_led.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>agile_button</GroupName>
+          <Files>
+            <File>
+              <FileName>agile_button.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\packages\agile_button\src\agile_button.c</FilePath>
             </File>
           </Files>
         </Group>

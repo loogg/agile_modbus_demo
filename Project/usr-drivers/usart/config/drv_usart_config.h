@@ -27,5 +27,17 @@ extern DMA_HandleTypeDef hdma_usart2_tx;
         .rs485_send_logic = -1      \
     }
 
+/* usart3 config */
+extern UART_HandleTypeDef huart3;
+extern DMA_HandleTypeDef hdma_usart3_tx;
+#define USART3_CONFIG               \
+    {                               \
+        .name = "usart3",           \
+        .handle = &huart3,          \
+        .instance = USART3,         \
+        .dma_tx = &hdma_usart3_tx,  \
+        .rs485_control_pin = -1,    \
+        .rs485_send_logic = -1      \
+    }
 
 #endif

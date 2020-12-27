@@ -1,3 +1,15 @@
+/*
+ * Copyright (c) 2006-2018, RT-Thread Development Team
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Change Logs:
+ * Date           Author       Notes
+ * 2012-09-30     Bernard      first version.
+ * 2013-05-08     Grissiom     reimplement
+ * 2016-08-18     heyuanjie    add interface
+ */
+
 #include <ringbuffer.h>
 #include <string.h>
 
@@ -341,3 +353,43 @@ void rt_ringbuffer_reset(struct rt_ringbuffer *rb)
     rb->write_index = 0;
 }
 RTM_EXPORT(rt_ringbuffer_reset);
+
+#ifdef RT_USING_HEAP
+
+struct rt_ringbuffer* rt_ringbuffer_create(rt_uint16_t size)
+{
+    struct rt_ringbuffer *rb;
+    rt_uint8_t *pool;
+
+	RT_ASSERT(size > 0);
+
+    size = RT_ALIGN_DOWN(size, RT_ALIGN_SIZE);
+
+    rb = (struct rt_ringbuffer *)rt_malloc(sizeof(struct rt_ringbuffer));
+    if (rb == RT_NULL)
+        goto exit;
+
+    pool = (rt_uint8_t *)rt_malloc(size);
+    if (pool == RT_NULL)
+    {
+        rt_free(rb);
+        rb = RT_NULL;
+        goto exit;
+    }
+    rt_ringbuffer_init(rb, pool, size);
+
+exit:
+    return rb;
+}
+RTM_EXPORT(rt_ringbuffer_create);
+
+void rt_ringbuffer_destroy(struct rt_ringbuffer *rb)
+{
+    RT_ASSERT(rb != RT_NULL);
+
+    rt_free(rb->buffer_ptr);
+    rt_free(rb);
+}
+RTM_EXPORT(rt_ringbuffer_destroy);
+
+#endif

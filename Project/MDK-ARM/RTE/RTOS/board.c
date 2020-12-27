@@ -31,17 +31,15 @@ static void rt_hw_systick_init(void)
 }
 
 #if defined(RT_USING_USER_MAIN) && defined(RT_USING_HEAP)
-#define RT_HEAP_SIZE 1024
-static uint32_t rt_heap[RT_HEAP_SIZE];     // heap default size: 4K(1024 * 4)
-RT_WEAK void *rt_heap_begin_get(void)
-{
-    return rt_heap;
-}
+#define STM32_SRAM_START              (0x20000000)    
+#define STM32_SRAM_END                (STM32_SRAM_START + 48 * 1024)   // 结束地址 = 0x20000000（基址） + 48K(RAM大小)
 
-RT_WEAK void *rt_heap_end_get(void)
-{
-    return rt_heap + RT_HEAP_SIZE;
-}
+#if defined(__CC_ARM) || defined(__CLANG_ARM)
+extern int Image$$RW_IRAM1$$ZI$$Limit;                   // RW_IRAM1，需与链接脚本中运行时域名相对应
+#define HEAP_BEGIN      ((void *)&Image$$RW_IRAM1$$ZI$$Limit)
+#endif
+
+#define HEAP_END                       STM32_SRAM_END
 #endif
 
 HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority)
@@ -75,7 +73,7 @@ void rt_hw_board_init()
 #endif
 
 #if defined(RT_USING_USER_MAIN) && defined(RT_USING_HEAP)
-    rt_system_heap_init(rt_heap_begin_get(), rt_heap_end_get());
+    rt_system_heap_init((void *)HEAP_BEGIN, (void *)HEAP_END);
 #endif
     
     console_init();

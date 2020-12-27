@@ -1,6 +1,7 @@
 #ifndef __USR_DRIVERS_H
 #define __USR_DRIVERS_H
 #include <rtthread.h>
+#include "stm32f1xx_hal.h"
 
 typedef struct usr_driver *usr_driver_t;
 

@@ -1,4 +1,3 @@
-#include "stm32f1xx_hal.h"
 #include "usr-drivers.h"
 #include "drv_gpio.h"
 
@@ -18,7 +17,10 @@ struct pin_index
 static const struct pin_index pins[] = 
 {
     {0, RCC_GPIOA, GPIOA, GPIO_PIN_8},  //D0
-    {1, RCC_GPIOD, GPIOD, GPIO_PIN_2}  //D1
+    {1, RCC_GPIOD, GPIOD, GPIO_PIN_2},  //D1
+    {2, RCC_GPIOA, GPIOA, GPIO_PIN_0},  //WK_UP
+    {5, RCC_GPIOB, GPIOB, GPIO_PIN_0},  //WIFI Power
+    {6, RCC_GPIOB, GPIOB, GPIO_PIN_1}   //WIFI RST
 };
 
 #define ITEM_NUM(items) sizeof(items) / sizeof(items[0])

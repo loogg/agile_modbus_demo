@@ -1,4 +1,3 @@
-#include "stm32f1xx_hal.h"
 #include "usr-drivers.h"
 #include "init_module.h"
 #include "agile_modbus.h"

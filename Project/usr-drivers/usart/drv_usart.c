@@ -1,4 +1,3 @@
-#include "stm32f1xx_hal.h"
 #include "usr-drivers.h"
 #include "drv_usart.h"
 #include "drv_usart_config.h"
@@ -34,7 +33,8 @@ static rt_slist_t drv_usart_header = RT_SLIST_OBJECT_INIT(drv_usart_header);
 static struct usr_driver_usart_config usart_config[] =
 {
     USART1_CONFIG,
-    USART2_CONFIG
+    USART2_CONFIG,
+    USART3_CONFIG
 };
 
 static struct usr_driver_usart usart_obj[sizeof(usart_config) / sizeof(usart_config[0])] = {0};
@@ -356,6 +356,28 @@ void USART2_IRQHandler(void)
     rt_interrupt_enter();
 
     HAL_UART_IRQHandler(&huart2);
+    
+    /* leave interrupt */
+    rt_interrupt_leave();
+}
+
+void DMA1_Channel2_IRQHandler(void)
+{
+    /* enter interrupt */
+    rt_interrupt_enter();
+
+    HAL_DMA_IRQHandler(&hdma_usart3_tx);
+
+    /* leave interrupt */
+    rt_interrupt_leave();
+}
+
+void USART3_IRQHandler(void)
+{
+    /* enter interrupt */
+    rt_interrupt_enter();
+
+    HAL_UART_IRQHandler(&huart3);
     
     /* leave interrupt */
     rt_interrupt_leave();

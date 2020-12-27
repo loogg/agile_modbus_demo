@@ -5,3 +5,6 @@ DMA_HandleTypeDef hdma_usart1_tx;
 
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart2_tx;
+
+UART_HandleTypeDef huart3;
+DMA_HandleTypeDef hdma_usart3_tx;

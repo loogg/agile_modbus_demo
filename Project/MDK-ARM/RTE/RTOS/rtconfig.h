@@ -44,6 +44,10 @@
 //  <i>Default: enable kernel debug configuration
 #define RT_DEBUG
 // </c>
+// <c1>enable kernel debug color
+//  <i>Default: enable kernel debug color
+#define RT_DEBUG_COLOR
+// </c>
 // <o>enable components initialization debug configuration<0-1>
 //  <i>Default: 0
 #define RT_DEBUG_INIT 0
@@ -89,7 +93,7 @@
 // </c>
 // <c1>Using Event
 //  <i>Using Event
-//#define RT_USING_EVENT
+#define RT_USING_EVENT
 // </c>
 // <c1>Using MailBox
 //  <i>Using MailBox
@@ -104,11 +108,11 @@
 // <h>Memory Management Configuration
 // <c1>Dynamic Heap Management
 //  <i>Dynamic Heap Management
-//#define RT_USING_HEAP
+#define RT_USING_HEAP
 // </c>
 // <c1>using small memory
 //  <i>using small memory
-//#define RT_USING_SMALL_MEM
+#define RT_USING_SMALL_MEM
 // </c>
 // <c1>using tiny size of memory
 //  <i>using tiny size of memory
@@ -124,7 +128,10 @@
 // <o>the buffer size of console <1-1024>
 //  <i>the buffer size of console
 //  <i>Default: 128  (128Byte)
-#define RT_CONSOLEBUF_SIZE          128
+#define RT_CONSOLEBUF_SIZE          512
+// <s>the device name for console
+//  <i>the device name for console
+#define RT_CONSOLE_DEVICE_NAME      "usart1"
 // </h>
 
 #if defined(RT_USING_FINSH)
@@ -149,6 +156,67 @@
     #define FINSH_USING_HISTORY
     // </h>
 #endif
+
+// <e>AT commands Configuration
+// <i> Enables AT commands
+#define RT_USING_AT         1
+#if RT_USING_AT == 0
+    #undef RT_USING_AT
+#endif
+#ifdef RT_USING_AT
+// <c1>enable debug log output
+//  <i>enable debug log output
+#define AT_DEBUG
+// </c>
+// <c1>enable AT commands client
+//  <i>enable AT commands client
+#define AT_USING_CLIENT
+// </c>
+#ifdef AT_USING_CLIENT
+// <o>the maximum number of supported clients
+//  <i>Default: 1
+#define AT_CLIENT_NUM_MAX   1
+// <c1>enable CLI(Command-Line Interface) for AT commands
+//  <i>enable CLI(Command-Line Interface) for AT commands
+#define AT_USING_CLI
+// </c>
+// <c1>enable print RAW format AT command communication data
+//  <i>enable print RAW format AT command communication data
+//#define AT_PRINT_RAW_CMD
+// </c>
+// <o>the maximum length of AT Commands buffer
+//  <i>Default: 128
+#define AT_CMD_MAX_LEN      128
+#endif
+#endif
+// </e>
+
+// <h>WIFI Configuration
+// <s>the client driver name for wifi
+//  <i>the client driver name for wifi
+#define WIFI_CLIENT_DEVICE_NAME     "usart3"
+// <o>the power pin of wifi
+//  <i>the power pin of wifi
+#define WIFI_POWER_PIN              5
+// <o>the reset pin of wifi
+//  <i>the reset pin of wifi
+#define WIFI_RESET_PIN              6
+// <o>the recv buf len of wifi
+//  <i>the recv buf len of wifi
+#define WIFI_RECV_BUFF_LEN          1024
+// <o>the listen port of wifi
+//  <i>the listen port of wifi
+#define WIFI_LISTEN_PORT            502
+// <o>the client timeout(/s) of wifi
+//  <i>the client timeout(/s) of wifi
+#define WIFI_CLIENT_TIMEOUT         10
+// <s>the ssid of wifi station
+//  <i>the ssid of wifi station
+#define WIFI_STATION_SSID           "mlw-home"
+// <s>the password of wifi station
+//  <i>the password of wifi station
+#define WIFI_STATION_PASSWORD       "mlw19970517"
+// </h>
 
 // <<< end of configuration section >>>
 

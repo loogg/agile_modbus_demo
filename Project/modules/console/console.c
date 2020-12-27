@@ -1,7 +1,4 @@
-#include "stm32f1xx_hal.h"
 #include "usr-drivers.h"
-
-#define DEVICE_NAME         "usart1"
 
 ALIGN(RT_ALIGN_SIZE)
 /* 串口 */
@@ -47,7 +44,7 @@ char rt_hw_console_getchar(void)
 
 int console_init(void)
 {
-    drv = usr_driver_find(DEVICE_NAME);
+    drv = usr_driver_find(RT_CONSOLE_DEVICE_NAME);
     if(drv == RT_NULL)
         return -RT_ERROR;
     
