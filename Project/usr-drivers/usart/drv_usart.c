@@ -1,4 +1,3 @@
-#include "usr-drivers.h"
 #include "drv_usart.h"
 #include "drv_usart_config.h"
 #include "drv_gpio.h"
@@ -30,19 +29,19 @@
 
 static rt_slist_t drv_usart_header = RT_SLIST_OBJECT_INIT(drv_usart_header);
 
-static struct usr_driver_usart_config usart_config[] =
+static struct usr_device_usart_config usart_config[] =
 {
     USART1_CONFIG,
     USART2_CONFIG,
     USART3_CONFIG
 };
 
-static struct usr_driver_usart usart_obj[sizeof(usart_config) / sizeof(usart_config[0])] = {0};
+static struct usr_device_usart usart_obj[sizeof(usart_config) / sizeof(usart_config[0])] = {0};
 
-static rt_err_t _usart_init(usr_driver_t drv)
+static rt_err_t _usart_init(usr_device_t dev)
 {
-    RT_ASSERT(drv != RT_NULL);
-    struct usr_driver_usart *usart = (struct usr_driver_usart *)drv;
+    RT_ASSERT(dev != RT_NULL);
+    struct usr_device_usart *usart = (struct usr_device_usart *)dev;
 
     if((usart->buffer.send_buf == RT_NULL) || (usart->buffer.send_bufsz < RT_ALIGN_SIZE) ||
        (usart->buffer.read_buf == RT_NULL) || (usart->buffer.read_bufsz < RT_ALIGN_SIZE))
@@ -59,7 +58,7 @@ static rt_err_t _usart_init(usr_driver_t drv)
     rt_ringbuffer_init(&(usart->rx_rb), usart->buffer.read_buf, usart->buffer.read_bufsz);
     usart->tx_activated = RT_FALSE;
     usart->tx_activated_timeout = rt_tick_get();
-    usart->rx_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DRIVER_USART_RX_TIMEOUT * 1000);
+    usart->rx_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DEVICE_USART_RX_TIMEOUT * 1000);
     DRV_USART_RS485_INIT();
     DRV_USART_RS485_RECV();
 
@@ -82,10 +81,10 @@ static rt_err_t _usart_init(usr_driver_t drv)
     return RT_EOK;
 }
 
-static rt_size_t _usart_read(usr_driver_t drv, rt_off_t pos, void *buffer, rt_size_t size)
+static rt_size_t _usart_read(usr_device_t dev, rt_off_t pos, void *buffer, rt_size_t size)
 {
-    RT_ASSERT(drv != RT_NULL);
-    struct usr_driver_usart *usart = (struct usr_driver_usart *)drv;
+    RT_ASSERT(dev != RT_NULL);
+    struct usr_device_usart *usart = (struct usr_device_usart *)dev;
 
     if(!usart->init_ok)
         return 0;
@@ -104,14 +103,14 @@ static rt_size_t _usart_read(usr_driver_t drv, rt_off_t pos, void *buffer, rt_si
     return len;
 }
 
-static rt_size_t _usart_write(usr_driver_t drv, rt_off_t pos, const void *buffer, rt_size_t size)
+static rt_size_t _usart_write(usr_device_t dev, rt_off_t pos, const void *buffer, rt_size_t size)
 {
-    RT_ASSERT(drv != RT_NULL);
-    struct usr_driver_usart *usart = (struct usr_driver_usart *)drv;
+    RT_ASSERT(dev != RT_NULL);
+    struct usr_device_usart *usart = (struct usr_device_usart *)dev;
 
     if(!usart->init_ok)
         return 0;
-    if(usart->error_cnt >= USR_DRIVER_USART_MAX_ERROR_CNT)
+    if(usart->error_cnt >= USR_DEVICE_USART_MAX_ERROR_CNT)
         return 0;
     if(size <= 0)
         return size;
@@ -134,25 +133,25 @@ static rt_size_t _usart_write(usr_driver_t drv, rt_off_t pos, const void *buffer
         usart->tx_activated = RT_TRUE;
         HAL_UART_AbortTransmit(usart->config->handle);
         HAL_UART_Transmit_DMA(usart->config->handle, send_ptr, send_len);
-        usart->tx_activated_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DRIVER_USART_TX_ACTIVATED_TIMEOUT * 1000);
+        usart->tx_activated_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DEVICE_USART_TX_ACTIVATED_TIMEOUT * 1000);
     }while(0);
     rt_hw_interrupt_enable(level);
 
     return put_len;
 }
 
-static rt_err_t _usart_control(usr_driver_t drv, int cmd, void *args)
+static rt_err_t _usart_control(usr_device_t dev, int cmd, void *args)
 {
-    RT_ASSERT(drv != RT_NULL);
-    struct usr_driver_usart *usart = (struct usr_driver_usart *)drv;
+    RT_ASSERT(dev != RT_NULL);
+    struct usr_device_usart *usart = (struct usr_device_usart *)dev;
 
     rt_err_t result = -RT_ERROR;
 
     switch(cmd)
     {
-        case USR_DRIVER_USART_CMD_SET_PARAMETER:
+        case USR_DEVICE_USART_CMD_SET_PARAMETER:
         {
-            struct usr_driver_usart_parameter *parameter = args;
+            struct usr_device_usart_parameter *parameter = args;
             if(parameter == RT_NULL)
                 break;
 
@@ -176,9 +175,9 @@ static rt_err_t _usart_control(usr_driver_t drv, int cmd, void *args)
         }
         break;
 
-        case USR_DRIVER_USART_CMD_SET_BUFFER:
+        case USR_DEVICE_USART_CMD_SET_BUFFER:
         {
-            struct usr_driver_usart_buffer *buffer = args;
+            struct usr_device_usart_buffer *buffer = args;
             if(buffer == RT_NULL)
                 break;
             
@@ -202,7 +201,7 @@ static rt_err_t _usart_control(usr_driver_t drv, int cmd, void *args)
         }
         break;
 
-        case USR_DRIVER_USART_CMD_FLUSH:
+        case USR_DEVICE_USART_CMD_FLUSH:
         {
             if(!usart->init_ok)
             {
@@ -224,7 +223,7 @@ static rt_err_t _usart_control(usr_driver_t drv, int cmd, void *args)
         }
         break;
 
-        case USR_DRIVER_USART_CMD_STOP:
+        case USR_DEVICE_USART_CMD_STOP:
         {
             rt_base_t level = rt_hw_interrupt_disable();
             if(usart->init_ok)
@@ -242,12 +241,12 @@ static rt_err_t _usart_control(usr_driver_t drv, int cmd, void *args)
     return result;
 }
 
-static struct usr_driver_usart *get_drv_by_handle(UART_HandleTypeDef *huart)
+static struct usr_device_usart *get_drv_by_handle(UART_HandleTypeDef *huart)
 {
     rt_slist_t *node;
     rt_slist_for_each(node, &drv_usart_header)
     {
-        struct usr_driver_usart *usart = rt_slist_entry(node, struct usr_driver_usart, slist);
+        struct usr_device_usart *usart = rt_slist_entry(node, struct usr_device_usart, slist);
         if(usart->config->handle == huart)
             return usart;
     }
@@ -257,7 +256,7 @@ static struct usr_driver_usart *get_drv_by_handle(UART_HandleTypeDef *huart)
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
-    struct usr_driver_usart *usart = get_drv_by_handle(huart);
+    struct usr_device_usart *usart = get_drv_by_handle(huart);
     if(usart == RT_NULL)
         return;
 
@@ -281,7 +280,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     if(result == RT_EOK)
     {
         usart->tx_activated = RT_TRUE;
-        usart->tx_activated_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DRIVER_USART_TX_ACTIVATED_TIMEOUT * 1000);
+        usart->tx_activated_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DEVICE_USART_TX_ACTIVATED_TIMEOUT * 1000);
     }
     else
     {
@@ -295,12 +294,12 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    struct usr_driver_usart *usart = get_drv_by_handle(huart);
+    struct usr_device_usart *usart = get_drv_by_handle(huart);
     if(usart == RT_NULL)
         return;
     
     rt_ringbuffer_putchar(&(usart->rx_rb), usart->ignore_data);
-    usart->rx_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DRIVER_USART_RX_TIMEOUT * 1000);
+    usart->rx_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DEVICE_USART_RX_TIMEOUT * 1000);
 
     HAL_UART_Receive_IT(usart->config->handle, &(usart->ignore_data), 1);
     
@@ -310,7 +309,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-    struct usr_driver_usart *usart = get_drv_by_handle(huart);
+    struct usr_device_usart *usart = get_drv_by_handle(huart);
     if(usart == RT_NULL)
         return;
     
@@ -386,7 +385,7 @@ void USART3_IRQHandler(void)
 static int drv_hw_usart_init(void)
 {
     int obj_num = sizeof(usart_obj) / sizeof(usart_obj[0]);
-    struct usr_driver_usart_parameter parameter = USR_DRIVER_USART_PARAMETER_DEFAULT;
+    struct usr_device_usart_parameter parameter = USR_DEVICE_USART_PARAMETER_DEFAULT;
 
     for (int i = 0; i < obj_num; i++)
     {
@@ -400,7 +399,7 @@ static int drv_hw_usart_init(void)
         usart_obj[i].parent.write = _usart_write;
         usart_obj[i].parent.control = _usart_control;
 
-        usr_driver_register(&(usart_obj[i].parent), usart_obj[i].config->name);
+        usr_device_register(&(usart_obj[i].parent), usart_obj[i].config->name);
     }
 
     return RT_EOK;
@@ -421,7 +420,7 @@ static void drv_usart_monitor(void)
     rt_slist_t *node;
     rt_slist_for_each(node, &drv_usart_header)
     {
-        struct usr_driver_usart *usart = rt_slist_entry(node, struct usr_driver_usart, slist);
+        struct usr_device_usart *usart = rt_slist_entry(node, struct usr_device_usart, slist);
         if(!usart->init_ok)
             continue;
         
@@ -448,7 +447,7 @@ static void drv_usart_monitor(void)
             usart->reset_flag = 1;
         rt_hw_interrupt_enable(level);
 
-        if(usart->error_cnt >= USR_DRIVER_USART_MAX_ERROR_CNT)
+        if(usart->error_cnt >= USR_DEVICE_USART_MAX_ERROR_CNT)
             usart->reset_flag = 1;
 
         if(usart->reset_flag)

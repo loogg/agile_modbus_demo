@@ -1,6 +1,7 @@
 #include "wifi.h"
+#include "drv_gpio.h"
+#include "drv_usart.h"
 #include "init_module.h"
-#include "usr-drivers.h"
 #include "at.h"
 #include "led.h"
 #include <string.h>
@@ -849,13 +850,13 @@ static int wifi_init(void)
         wifi_dev.sessions[i].state = WIFI_SESSION_STATE_CLOSED;
     }
 
-    struct usr_driver_usart *drv = (struct usr_driver_usart *)usr_driver_find(WIFI_CLIENT_DEVICE_NAME);
-    struct usr_driver_usart_parameter parameter = drv->parameter;
+    struct usr_device_usart *dev = (struct usr_device_usart *)usr_device_find(WIFI_CLIENT_DEVICE_NAME);
+    struct usr_device_usart_parameter parameter = dev->parameter;
     parameter.baudrate = 115200;
     parameter.parity = UART_PARITY_NONE;
     parameter.wlen = UART_WORDLENGTH_8B;
     parameter.stblen = UART_STOPBITS_1;
-    usr_driver_control(&(drv->parent), USR_DRIVER_USART_CMD_SET_PARAMETER, &parameter);
+    usr_device_control(&(dev->parent), USR_DEVICE_USART_CMD_SET_PARAMETER, &parameter);
 
     at_client_init(WIFI_CLIENT_DEVICE_NAME, WIFI_RECV_BUFF_LEN);
     /* register URC data execution function  */

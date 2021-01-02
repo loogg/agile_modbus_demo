@@ -1,4 +1,4 @@
-#include "usr-drivers.h"
+#include "drv_usart.h"
 #include "init_module.h"
 #include "agile_modbus.h"
 
@@ -12,7 +12,7 @@
 
 ALIGN(RT_ALIGN_SIZE)
 /* 串口 */
-static usr_driver_t drv = RT_NULL;
+static usr_device_t dev = RT_NULL;
 static rt_uint8_t usart_send_buf[2048];
 static rt_uint8_t usart_read_buf[256];
 static struct rt_semaphore rx_sem;
@@ -45,7 +45,7 @@ static int _usart_receive(rt_uint8_t *read_buf, int read_bufsz, int timeout)
 
     while(1)
     {
-        int rc = usr_driver_read(drv, 0, read_buf + len, read_bufsz);
+        int rc = usr_device_read(dev, 0, read_buf + len, read_bufsz);
         if(rc > 0)
         {
             len += rc;
@@ -73,8 +73,8 @@ static int _usart_pass(rt_uint8_t *send_buf, int send_len, rt_uint8_t *read_buf,
     if((send_buf == RT_NULL) || (send_len <= 0) || (read_buf == RT_NULL) || (read_bufsz <= 0) || (timeout <= 0))
         return -RT_ERROR;
     
-    usr_driver_control(drv, USR_DRIVER_USART_CMD_FLUSH, RT_NULL);
-    usr_driver_write(drv, 0, send_buf, send_len);
+    usr_device_control(dev, USR_DEVICE_USART_CMD_FLUSH, RT_NULL);
+    usr_device_write(dev, 0, send_buf, send_len);
     int read_len = _usart_receive(read_buf, read_bufsz, timeout);
 
     return read_len;
@@ -111,7 +111,7 @@ static void rtu_master_entry(void *parameter)
     }
 }
 
-static rt_err_t rx_indicate(usr_driver_t drv, rt_size_t size)
+static rt_err_t rx_indicate(usr_device_t dev, rt_size_t size)
 {
     rt_sem_release(&rx_sem);
 
@@ -121,21 +121,21 @@ static rt_err_t rx_indicate(usr_driver_t drv, rt_size_t size)
 
 static int rtu_master_init(void)
 {
-    drv = usr_driver_find(DEVICE_NAME);
-    if(drv == RT_NULL)
+    dev = usr_device_find(DEVICE_NAME);
+    if(dev == RT_NULL)
         return -RT_ERROR;
     
     rt_sem_init(&rx_sem, "rms_r", 0, RT_IPC_FLAG_FIFO);
-    usr_driver_set_rx_indicate(drv, rx_indicate);
+    usr_device_set_rx_indicate(dev, rx_indicate);
 
 
-    struct usr_driver_usart_buffer buffer;
+    struct usr_device_usart_buffer buffer;
     buffer.send_buf = usart_send_buf;
     buffer.send_bufsz = sizeof(usart_send_buf);
     buffer.read_buf = usart_read_buf;
     buffer.read_bufsz = sizeof(usart_read_buf);
-    usr_driver_control(drv, USR_DRIVER_USART_CMD_SET_BUFFER, &buffer);
-    usr_driver_init(drv);
+    usr_device_control(dev, USR_DEVICE_USART_CMD_SET_BUFFER, &buffer);
+    usr_device_init(dev);
 
     rt_thread_init(&_thread,
                    "rtu_master",

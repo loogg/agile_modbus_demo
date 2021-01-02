@@ -65,7 +65,7 @@ const char *at_get_last_cmd(rt_size_t *cmd_size)
     return send_buf;
 }
 
-rt_size_t at_vprintf(usr_driver_t drv, const char *format, va_list args)
+rt_size_t at_vprintf(usr_device_t dev, const char *format, va_list args)
 {
     last_cmd_len = vsnprintf(send_buf, sizeof(send_buf), format, args);
 
@@ -73,16 +73,16 @@ rt_size_t at_vprintf(usr_driver_t drv, const char *format, va_list args)
     at_print_raw_cmd("sendline", send_buf, last_cmd_len);
 #endif
 
-    return usr_driver_write(drv, 0, send_buf, last_cmd_len);
+    return usr_device_write(dev, 0, send_buf, last_cmd_len);
 }
 
-rt_size_t at_vprintfln(usr_driver_t drv, const char *format, va_list args)
+rt_size_t at_vprintfln(usr_device_t dev, const char *format, va_list args)
 {
     rt_size_t len;
 
-    len = at_vprintf(drv, format, args);
+    len = at_vprintf(dev, format, args);
 
-    usr_driver_write(drv, 0, "\r\n", 2);
+    usr_device_write(dev, 0, "\r\n", 2);
 
     return len + 2;
 }

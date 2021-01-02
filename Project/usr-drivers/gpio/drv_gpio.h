@@ -1,6 +1,8 @@
 #ifndef __DRV_GPIO_H
 #define __DRV_GPIO_H
 #include <rtthread.h>
+#include "stm32f1xx_hal.h"
+#include "usr_device.h"
 
 #define PIN_LOW                         0x00
 #define PIN_HIGH                        0x01
@@ -11,12 +13,12 @@
 #define PIN_MODE_INPUT_PULLDOWN         0x03
 #define PIN_MODE_OUTPUT_OD              0x04
 
-struct usr_driver_pin
+struct usr_device_pin
 {
-    struct usr_driver parent;
+    struct usr_device parent;
 };
 
-struct usr_driver_pin_mode
+struct usr_device_pin_mode
 {
     rt_base_t pin;
     rt_base_t mode;

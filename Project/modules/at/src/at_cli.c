@@ -20,7 +20,7 @@
 
 static struct rt_semaphore console_rx_notice;
 static struct rt_ringbuffer *console_rx_fifo = RT_NULL;
-static rt_err_t (*odev_rx_ind)(usr_driver_t drv, rt_size_t size) = RT_NULL;
+static rt_err_t (*odev_rx_ind)(usr_device_t dev, rt_size_t size) = RT_NULL;
 
 #ifdef AT_USING_CLIENT
 static struct rt_semaphore client_rx_notice;
@@ -37,7 +37,7 @@ static char console_getchar(void)
     return ch;
 }
 
-static rt_err_t console_getchar_rx_ind(usr_driver_t drv, rt_size_t size)
+static rt_err_t console_getchar_rx_ind(usr_device_t dev, rt_size_t size)
 {
     uint8_t ch;
     rt_size_t i;
@@ -45,7 +45,7 @@ static rt_err_t console_getchar_rx_ind(usr_driver_t drv, rt_size_t size)
     for (i = 0; i < size; i++)
     {
         /* read a char */
-        if (usr_driver_read(drv, 0, &ch, 1))
+        if (usr_device_read(dev, 0, &ch, 1))
         {
             rt_ringbuffer_put_force(console_rx_fifo, &ch, 1);
             rt_sem_release(&console_rx_notice);
@@ -58,7 +58,7 @@ static rt_err_t console_getchar_rx_ind(usr_driver_t drv, rt_size_t size)
 void at_cli_init(void)
 {
     rt_base_t int_lvl;
-    usr_driver_t console;
+    usr_device_t console;
 
     rt_sem_init(&console_rx_notice, "cli_c", 0, RT_IPC_FLAG_FIFO);
 
@@ -68,12 +68,12 @@ void at_cli_init(void)
     RT_ASSERT(console_rx_fifo);
 
     int_lvl = rt_hw_interrupt_disable();
-    console = usr_driver_find(RT_CONSOLE_DEVICE_NAME);
+    console = usr_device_find(RT_CONSOLE_DEVICE_NAME);
     if (console)
     {
         /* backup RX indicate */
         odev_rx_ind = console->rx_indicate;
-        usr_driver_set_rx_indicate(console, console_getchar_rx_ind);
+        usr_device_set_rx_indicate(console, console_getchar_rx_ind);
     }
 
     rt_hw_interrupt_enable(int_lvl);
@@ -82,14 +82,14 @@ void at_cli_init(void)
 void at_cli_deinit(void)
 {
     rt_base_t int_lvl;
-    usr_driver_t console;
+    usr_device_t console;
 
     int_lvl = rt_hw_interrupt_disable();
-    console = usr_driver_find(RT_CONSOLE_DEVICE_NAME);
+    console = usr_device_find(RT_CONSOLE_DEVICE_NAME);
     if (console && odev_rx_ind)
     {
         /* restore RX indicate */
-        usr_driver_set_rx_indicate(console, odev_rx_ind);
+        usr_device_set_rx_indicate(console, odev_rx_ind);
     }
     rt_hw_interrupt_enable(int_lvl);
 
@@ -182,7 +182,7 @@ static void at_client_entry(void *param)
     }
 }
 
-static rt_err_t client_getchar_rx_ind(usr_driver_t drv, rt_size_t size)
+static rt_err_t client_getchar_rx_ind(usr_device_t dev, rt_size_t size)
 {
     uint8_t ch;
     rt_size_t i;
@@ -190,7 +190,7 @@ static rt_err_t client_getchar_rx_ind(usr_driver_t drv, rt_size_t size)
     for (i = 0; i < size; i++)
     {
         /* read a char */
-        if (usr_driver_read(drv, 0, &ch, 1))
+        if (usr_device_read(dev, 0, &ch, 1))
         {
             rt_ringbuffer_put_force(client_rx_fifo, &ch, 1);
             rt_sem_release(&client_rx_notice);
@@ -209,7 +209,7 @@ static void client_cli_parser(at_client_t  client)
     char ch;
     char cur_line[CMD_SIZE] = { 0 };
     rt_size_t cur_line_len = 0;
-    static rt_err_t (*client_odev_rx_ind)(usr_driver_t drv, rt_size_t size) = RT_NULL;
+    static rt_err_t (*client_odev_rx_ind)(usr_device_t dev, rt_size_t size) = RT_NULL;
     rt_base_t int_lvl;
     rt_thread_t at_client;
     at_status_t client_odev_status;
@@ -225,8 +225,8 @@ static void client_cli_parser(at_client_t  client)
         /* backup client device RX indicate */
         {
             int_lvl = rt_hw_interrupt_disable();
-            client_odev_rx_ind = client->drv->rx_indicate;
-            usr_driver_set_rx_indicate(client->drv, client_getchar_rx_ind);
+            client_odev_rx_ind = client->dev->rx_indicate;
+            usr_device_set_rx_indicate(client->dev, client_getchar_rx_ind);
             rt_hw_interrupt_enable(int_lvl);
         }
 
@@ -237,7 +237,7 @@ static void client_cli_parser(at_client_t  client)
         if (client_rx_fifo && at_client)
         {
             rt_kprintf("======== Welcome to using RT-Thread AT command client cli ========\n");
-            rt_kprintf("Cli will forward your command to server port(%s). Press 'ESC' to exit.\n", client->drv->name);
+            rt_kprintf("Cli will forward your command to server port(%s). Press 'ESC' to exit.\n", client->dev->name);
             rt_thread_startup(at_client);
             /* process user input */
             while (ESC_KEY != (ch = console_getchar()))
@@ -274,7 +274,7 @@ static void client_cli_parser(at_client_t  client)
             /* restore client device RX indicate */
             {
                 int_lvl = rt_hw_interrupt_disable();
-                usr_driver_set_rx_indicate(client->drv, client_odev_rx_ind);
+                usr_device_set_rx_indicate(client->dev, client_odev_rx_ind);
                 rt_hw_interrupt_enable(int_lvl);
             }
 

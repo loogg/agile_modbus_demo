@@ -13,7 +13,7 @@
 #define __AT_H__
 
 #include <rtthread.h>
-#include "usr-drivers.h"
+#include "drv_usart.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -94,7 +94,7 @@ typedef struct at_cmd *at_cmd_t;
 
 struct at_server
 {
-    usr_driver_t drv;
+    usr_device_t dev;
 
     at_status_t status;
     rt_err_t (*get_char)(struct at_server *server, char *ch, rt_int32_t timeout);
@@ -161,7 +161,7 @@ typedef struct at_urc *at_urc_table_t;
 
 struct at_client
 {
-    usr_driver_t drv;
+    usr_device_t dev;
 
     at_status_t status;
     char end_sign;

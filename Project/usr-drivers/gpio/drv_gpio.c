@@ -1,4 +1,3 @@
-#include "usr-drivers.h"
 #include "drv_gpio.h"
 
 #define RCC_GPIOA       0
@@ -126,7 +125,7 @@ int drv_pin_read(rt_base_t pin)
     return value;
 }
 
-static rt_size_t _pin_read(usr_driver_t drv, rt_off_t pos, void *buffer, rt_size_t size)
+static rt_size_t _pin_read(usr_device_t dev, rt_off_t pos, void *buffer, rt_size_t size)
 {
     if(pos < 0)
         return 0;
@@ -139,7 +138,7 @@ static rt_size_t _pin_read(usr_driver_t drv, rt_off_t pos, void *buffer, rt_size
     return size;
 }
 
-static rt_size_t _pin_write(usr_driver_t drv, rt_off_t pos, const void *buffer, rt_size_t size)
+static rt_size_t _pin_write(usr_device_t dev, rt_off_t pos, const void *buffer, rt_size_t size)
 {
     if(pos < 0)
         return 0;
@@ -152,9 +151,9 @@ static rt_size_t _pin_write(usr_driver_t drv, rt_off_t pos, const void *buffer, 
     return size;
 }
 
-static rt_err_t _pin_control(usr_driver_t drv, int cmd, void *args)
+static rt_err_t _pin_control(usr_device_t dev, int cmd, void *args)
 {
-    struct usr_driver_pin_mode *mode = (struct usr_driver_pin_mode *)args;
+    struct usr_device_pin_mode *mode = (struct usr_device_pin_mode *)args;
     if(mode == RT_NULL)
         return -RT_ERROR;
     
@@ -163,18 +162,18 @@ static rt_err_t _pin_control(usr_driver_t drv, int cmd, void *args)
     return RT_EOK;
 }
 
-static struct usr_driver_pin _hw_pin;
+static struct usr_device_pin _hw_pin;
 
 static int drv_hw_pin_init(void)
 {
-    rt_memset(&_hw_pin, 0, sizeof(struct usr_driver_pin));
+    rt_memset(&_hw_pin, 0, sizeof(struct usr_device_pin));
 
     _hw_pin.parent.init = RT_NULL;
     _hw_pin.parent.read = _pin_read;
     _hw_pin.parent.write = _pin_write;
     _hw_pin.parent.control = _pin_control;
 
-    usr_driver_register(&(_hw_pin.parent), "pin");
+    usr_device_register(&(_hw_pin.parent), "pin");
 
     return RT_EOK;
 }

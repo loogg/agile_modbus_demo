@@ -192,8 +192,8 @@
 // </e>
 
 // <h>WIFI Configuration
-// <s>the client driver name for wifi
-//  <i>the client driver name for wifi
+// <s>the client device name for wifi
+//  <i>the client device name for wifi
 #define WIFI_CLIENT_DEVICE_NAME     "usart3"
 // <o>the power pin of wifi
 //  <i>the power pin of wifi

@@ -2,6 +2,7 @@
 #define __WIFI_H
 #include <rtthread.h>
 #include "ringblk_buf.h"
+#include "usr_device.h"
 
 #define WIFI_SERVER_MAX_CONN        5
 
@@ -31,6 +32,8 @@ struct wifi_session
 
 struct wifi_device
 {
+    struct usr_device parent;
+
     rt_mutex_t mtx;
     rt_event_t evt;
     wifi_state_t wifi_state;

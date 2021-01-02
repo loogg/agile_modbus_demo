@@ -27,7 +27,7 @@
 
 static struct at_client at_client_table[AT_CLIENT_NUM_MAX] = { 0 };
 
-extern rt_size_t at_vprintfln(usr_driver_t drv, const char *format, va_list args);
+extern rt_size_t at_vprintfln(usr_device_t dev, const char *format, va_list args);
 extern void at_print_raw_cmd(const char *type, const char *cmd, rt_size_t size);
 extern const char *at_get_last_cmd(rt_size_t *cmd_size);
 
@@ -308,7 +308,7 @@ int at_obj_exec_cmd(at_client_t client, at_response_t resp, const char *cmd_expr
     }
 
     va_start(args, cmd_expr);
-    at_vprintfln(client->drv, cmd_expr, args);
+    at_vprintfln(client->dev, cmd_expr, args);
     va_end(args);
 
     if (resp != RT_NULL)
@@ -353,7 +353,7 @@ int at_client_obj_wait_connect(at_client_t client, rt_uint32_t timeout)
     rt_err_t result = RT_EOK;
     at_response_t resp = RT_NULL;
     rt_tick_t start_time = 0;
-    char *client_name = client->drv->name;
+    char *client_name = client->dev->name;
 
     if (client == RT_NULL)
     {
@@ -386,7 +386,7 @@ int at_client_obj_wait_connect(at_client_t client, rt_uint32_t timeout)
         /* Check whether it is already connected */
         resp->buf_len = 0;
         resp->line_counts = 0;
-        usr_driver_write(client->drv, 0, "AT\r\n", 4);
+        usr_device_write(client->dev, 0, "AT\r\n", 4);
 
         if (rt_sem_take(client->resp_notice, resp->timeout) != RT_EOK)
             continue;
@@ -427,14 +427,14 @@ rt_size_t at_client_obj_send(at_client_t client, const char *buf, rt_size_t size
     at_print_raw_cmd("sendline", buf, size);
 #endif
 
-    return usr_driver_write(client->drv, 0, buf, size);
+    return usr_device_write(client->dev, 0, buf, size);
 }
 
 static rt_err_t at_client_getchar(at_client_t client, char *ch, rt_int32_t timeout)
 {
     rt_err_t result = RT_EOK;
 
-    while (usr_driver_read(client->drv, 0, ch, 1) == 0)
+    while (usr_device_read(client->dev, 0, ch, 1) == 0)
     {
         rt_sem_control(client->rx_notice, RT_IPC_CMD_RESET, RT_NULL);
 
@@ -599,7 +599,7 @@ at_client_t at_client_get(const char *dev_name)
 
     for (idx = 0; idx < AT_CLIENT_NUM_MAX; idx++)
     {
-        if (rt_strcmp(at_client_table[idx].drv->name, dev_name) == 0)
+        if (rt_strcmp(at_client_table[idx].dev->name, dev_name) == 0)
         {
             return &at_client_table[idx];
         }
@@ -615,7 +615,7 @@ at_client_t at_client_get(const char *dev_name)
  */
 at_client_t at_client_get_first(void)
 {
-    if (at_client_table[0].drv == RT_NULL)
+    if (at_client_table[0].dev == RT_NULL)
     {
         return RT_NULL;
     }
@@ -778,13 +778,13 @@ static void client_parser(at_client_t client)
     }
 }
 
-static rt_err_t at_client_rx_ind(usr_driver_t drv, rt_size_t size)
+static rt_err_t at_client_rx_ind(usr_device_t dev, rt_size_t size)
 {
     int idx = 0;
 
     for (idx = 0; idx < AT_CLIENT_NUM_MAX; idx++)
     {
-        if (at_client_table[idx].drv == drv && size > 0)
+        if (at_client_table[idx].dev == dev && size > 0)
         {
             rt_sem_release(at_client_table[idx].rx_notice);
         }
@@ -916,7 +916,7 @@ int at_client_init(const char *dev_name,  rt_size_t recv_bufsz)
         return result;
     }
 
-    for (idx = 0; idx < AT_CLIENT_NUM_MAX && at_client_table[idx].drv; idx++);
+    for (idx = 0; idx < AT_CLIENT_NUM_MAX && at_client_table[idx].dev; idx++);
 
     if (idx >= AT_CLIENT_NUM_MAX)
     {
@@ -935,18 +935,18 @@ int at_client_init(const char *dev_name,  rt_size_t recv_bufsz)
     }
 
     /* find and open command device */
-    client->drv = usr_driver_find(dev_name);
-    if (client->drv)
+    client->dev = usr_device_find(dev_name);
+    if (client->dev)
     {
-        struct usr_driver_usart_buffer buffer;
+        struct usr_device_usart_buffer buffer;
         buffer.send_bufsz = AT_CMD_MAX_LEN * 2;
         buffer.send_buf = rt_malloc(buffer.send_bufsz);
         buffer.read_bufsz = 500;
         buffer.read_buf = rt_malloc(buffer.read_bufsz);
-        usr_driver_control(client->drv, USR_DRIVER_USART_CMD_SET_BUFFER, &buffer);
-        usr_driver_init(client->drv);
+        usr_device_control(client->dev, USR_DEVICE_USART_CMD_SET_BUFFER, &buffer);
+        usr_device_init(client->dev);
 
-        usr_driver_set_rx_indicate(client->drv, at_client_rx_ind);
+        usr_device_set_rx_indicate(client->dev, at_client_rx_ind);
     }
     else
     {
