@@ -191,11 +191,14 @@ static int wifi_smart_config(void)
     do
     {
         if(event_result < 0)
-            break;
-        
-        if(event_result & WIFI_EVENT_SMARTCONFIG_FAILED)
         {
             LOG_W("smartconfig timeout.");
+            break;
+        }
+            
+        if(event_result & WIFI_EVENT_SMARTCONFIG_FAILED)
+        {
+            LOG_W("smartconfig failed.");
             break;
         }
 
