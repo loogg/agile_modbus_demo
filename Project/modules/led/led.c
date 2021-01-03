@@ -108,7 +108,7 @@ static int led_init(void)
                    RT_NULL,
                    &led_stack[0],
                    sizeof(led_stack),
-                   2,
+                   0,
                    100);
     rt_thread_startup(&led_thread);
 

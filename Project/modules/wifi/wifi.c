@@ -18,8 +18,6 @@
 #define WIFI_NET_TIMEOUT                300
 #define WIFI_SMART_TIMEOUT              180
 #define WIFI_SEND_MAX_SIZE              2048
-#define WIFI_CLIENT_RBB_BUFSZ           512
-#define WIFI_CLIENT_RBB_BLKNUM          10
 
 #define WIFI_EVENT_SEND_OK              (1UL << 0)
 #define WIFI_EVENT_SEND_FAIL            (1UL << 1)
@@ -27,19 +25,33 @@
 #define WIFI_SET_EVENT(socket, event)   ((1UL << (socket + 16)) | (event))
 
 #define WIFI_AT_SEND_CMD(resp, resp_line, timeout, cmd)                                         \
-        (resp) = at_resp_set_info((resp), 512, (resp_line), rt_tick_from_millisecond(timeout));    \
+        at_resp_set_info((resp), (resp_line), rt_tick_from_millisecond(timeout));    \
         if (at_exec_cmd((resp), (cmd)) < 0)                                          \
         {                                                                                          \
             break;                                                                                  \
         }
 
 ALIGN(RT_ALIGN_SIZE)
+/* 串口 */
+static rt_uint8_t usart_send_buf[AT_CMD_MAX_LEN * 3];
+static rt_uint8_t usart_read_buf[500];
+
+/* AT组件 */
+static rt_uint8_t at_recv_line_buf[WIFI_RECV_BUFF_LEN];
+static rt_uint8_t at_resp_buf[512];
+static struct at_response at_resp;
+static rt_uint8_t at_parser_stack[1536];
+static struct rt_thread at_parser;
+
+/* WIFI */
 static struct wifi_device wifi_dev = {0};
 static int cur_socket = -1;
+static rt_uint8_t wifi_thread_stack[2048];
+static struct rt_thread wifi_thread;
 
 static int wifi_event_send(uint32_t event)
 {
-    return (int)rt_event_send(wifi_dev.evt, event);
+    return (int)rt_event_send(&(wifi_dev.evt), event);
 }
 
 static int wifi_event_recv(uint32_t event, rt_int32_t timeout, rt_uint8_t option)
@@ -47,7 +59,7 @@ static int wifi_event_recv(uint32_t event, rt_int32_t timeout, rt_uint8_t option
     int result = 0;
     rt_uint32_t recved;
 
-    result = rt_event_recv(wifi_dev.evt, event, option | RT_EVENT_FLAG_CLEAR, timeout, &recved);
+    result = rt_event_recv(&(wifi_dev.evt), event, option | RT_EVENT_FLAG_CLEAR, timeout, &recved);
     if (result != RT_EOK)
     {
         return -RT_ETIMEOUT;
@@ -93,11 +105,11 @@ static void wifi_sessions_clean(struct wifi_session *session)
             rt_rbb_blk_t block = RT_NULL;
             do
             {
-                block = rt_rbb_blk_get(wifi_dev.sessions[i].recv_rbb);
+                block = rt_rbb_blk_get(&(wifi_dev.sessions[i].recv_rbb));
                 if (block == RT_NULL)
                     break;
 
-                rt_rbb_blk_free(wifi_dev.sessions[i].recv_rbb, block);
+                rt_rbb_blk_free(&(wifi_dev.sessions[i].recv_rbb), block);
             } while (block != RT_NULL);
 
             wifi_dev.sessions[i].state = WIFI_SESSION_STATE_CLOSED;
@@ -111,11 +123,11 @@ static void wifi_sessions_clean(struct wifi_session *session)
         rt_rbb_blk_t block = RT_NULL;
         do
         {
-            block = rt_rbb_blk_get(session->recv_rbb);
+            block = rt_rbb_blk_get(&(session->recv_rbb));
             if(block == RT_NULL)
                 break;
 
-            rt_rbb_blk_free(session->recv_rbb, block);
+            rt_rbb_blk_free(&(session->recv_rbb), block);
         }while(block != RT_NULL);
 
         session->state = WIFI_SESSION_STATE_CLOSED;
@@ -127,17 +139,10 @@ static void wifi_sessions_clean(struct wifi_session *session)
 static int wifi_para_init(void)
 {
     int result = -RT_ERROR;
-    rt_mutex_take(wifi_dev.mtx, RT_WAITING_FOREVER);
 
-    at_response_t resp = at_create_resp(512, 0, 500);
+    at_response_t resp = &at_resp;
     do
     {
-        if(resp == RT_NULL)
-        {
-            LOG_E("No memory for response structure!");
-            break;
-        }
-
         WIFI_AT_SEND_CMD(resp, 0, 500, "ATE0");
         WIFI_AT_SEND_CMD(resp, 0, 500, "AT+GMR");
         for (int i = 0; i < resp->line_counts - 1; i++)
@@ -151,31 +156,20 @@ static int wifi_para_init(void)
         result = RT_EOK;
     }while(0);
 
-    if(resp)
-        at_delete_resp(resp);
-    rt_mutex_release(wifi_dev.mtx);
-
     return result;
 }
 
 static int wifi_net_init(void)
 {
     int result = -RT_ERROR;
-    rt_mutex_take(wifi_dev.mtx, RT_WAITING_FOREVER);
 
-    at_response_t resp = at_create_resp(512, 0, 500);
+    at_response_t resp = &at_resp;
     do
     {
-        if(resp == RT_NULL)
-        {
-            LOG_E("No memory for response structure!");
-            break;
-        }
-
         WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CWDHCP_CUR=1,1");
         rt_thread_mdelay(100);
 
-        at_resp_set_info(resp, 512, 0, 30000);
+        at_resp_set_info(resp, 0, 30000);
         if(at_exec_cmd(resp, "AT+CWJAP_CUR=\"%s\",\"%s\"", WIFI_STATION_SSID, WIFI_STATION_PASSWORD) < 0)
         {
             LOG_E("join ap failed.");
@@ -195,7 +189,7 @@ static int wifi_net_init(void)
         WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CIPMUX=1");
         rt_thread_mdelay(100);
 
-        at_resp_set_info(resp, 512, 0, 5000);
+        at_resp_set_info(resp, 0, 5000);
         if(at_exec_cmd(resp, "AT+CIPSERVER=1,%d", WIFI_LISTEN_PORT) < 0)
         {
             LOG_E("listen port %d success.", WIFI_LISTEN_PORT);
@@ -203,16 +197,12 @@ static int wifi_net_init(void)
         }
         rt_thread_mdelay(100);
 
-        at_resp_set_info(resp, 512, 0, 500);
+        at_resp_set_info(resp, 0, 500);
         if(at_exec_cmd(resp, "AT+CIPSTO=%d", WIFI_CLIENT_TIMEOUT * 2) < 0)
             break;
 
         result = RT_EOK;
     }while(0);
-
-    if(resp)
-        at_delete_resp(resp);
-    rt_mutex_release(wifi_dev.mtx);
 
     return result;
 }
@@ -220,25 +210,14 @@ static int wifi_net_init(void)
 static int wifi_get_ip(void)
 {
     int result = -RT_ERROR;
-    rt_mutex_take(wifi_dev.mtx, RT_WAITING_FOREVER);
 
-    at_response_t resp = at_create_resp(512, 0, 500);
+    at_response_t resp = &at_resp;
     do
     {
-        if(resp == RT_NULL)
-        {
-            LOG_E("No memory for response structure!");
-            break;
-        }
-
         WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CIPSTA_CUR?");
 
         result = RT_EOK;
     }while(0);
-
-    if(resp)
-        at_delete_resp(resp);
-    rt_mutex_release(wifi_dev.mtx);
 
     return result;
 }
@@ -249,17 +228,11 @@ static int wifi_socket_close(int socket)
         return -RT_ERROR;
 
     int result = -RT_ERROR;
-    rt_mutex_take(wifi_dev.mtx, RT_WAITING_FOREVER);
 
-    at_response_t resp = at_create_resp(512, 0, 3000);
+    at_response_t resp = &at_resp;
+    at_resp_set_info(resp, 0, 3000);
     do
     {
-        if(resp == RT_NULL)
-        {
-            LOG_E("No memory for response structure!");
-            break;
-        }
-
         int rc = at_exec_cmd(resp, "AT+CIPCLOSE=%d", socket);
         if(rc == -RT_ETIMEOUT)
             break;
@@ -281,10 +254,6 @@ static int wifi_socket_close(int socket)
     else
         LOG_D("socket (%d) close ok.", socket);
 
-    if(resp)
-        at_delete_resp(resp);
-    rt_mutex_release(wifi_dev.mtx);
-
     return result;
 }
 
@@ -300,18 +269,12 @@ static int wifi_socket_send(int socket, const uint8_t *buf, int buf_len)
         return buf_len;
     
     int result = -RT_ERROR;
-    rt_mutex_take(wifi_dev.mtx, RT_WAITING_FOREVER);
 
-    at_response_t resp = at_create_resp(512, 2, 3000);
+    at_response_t resp = &at_resp;
+    at_resp_set_info(resp, 2, 3000);
     cur_socket = -1;
     do
     {
-        if(resp == RT_NULL)
-        {
-            LOG_E("No memory for response structure!");
-            break;
-        }
-
         int send_size = 0, cur_pkt_size = 0;
 
         int rc = RT_EOK;
@@ -375,9 +338,6 @@ static int wifi_socket_send(int socket, const uint8_t *buf, int buf_len)
 
     rt_thread_mdelay(100);
     cur_socket = -1;
-    if(resp)
-        at_delete_resp(resp);
-    rt_mutex_release(wifi_dev.mtx);
 
     return (result == RT_EOK) ? buf_len : result;
 }
@@ -458,11 +418,11 @@ static int wifi_net_process(void)
                     break;
                 }
 
-                rt_rbb_blk_t block = rt_rbb_blk_get(session->recv_rbb);
+                rt_rbb_blk_t block = rt_rbb_blk_get(&(session->recv_rbb));
                 if(block == RT_NULL)
                     break;
                 int rc = wifi_session_process(session, block->buf, block->size);
-                rt_rbb_blk_free(session->recv_rbb, block);
+                rt_rbb_blk_free(&(session->recv_rbb), block);
                 
                 if(rc != RT_EOK)
                 {
@@ -503,8 +463,6 @@ static void wifi_process_entry(void *parameter)
     {
         rt_thread_mdelay(10);
 
-        rt_mutex_take(wifi_dev.mtx, RT_WAITING_FOREVER);
-
         if((rt_tick_get() - ip_tick_timeout) < (RT_TICK_MAX / 2))
         {
             if(wifi_dev.wifi_state == WIFI_STATE_NET_PROCESS)
@@ -519,7 +477,7 @@ static void wifi_process_entry(void *parameter)
             {
                 LOG_W("Reset wifi.");
                 led_control(LED_CMD_WIFI_RESET);
-                rt_event_control(wifi_dev.evt, RT_IPC_CMD_RESET, RT_NULL);
+                rt_event_control(&(wifi_dev.evt), RT_IPC_CMD_RESET, RT_NULL);
                 wifi_sessions_clean(RT_NULL);
                 rt_memset(wifi_dev.ip, 0, sizeof(wifi_dev.ip));
                 rt_memset(wifi_dev.gateway, 0, sizeof(wifi_dev.gateway));
@@ -540,7 +498,7 @@ static void wifi_process_entry(void *parameter)
 
             case WIFI_STATE_POWER_ON:
             {
-                if(at_client_wait_connect(WIFI_WAIT_CONNECT_TIME) == RT_EOK)
+                if(at_client_wait_connect(&at_resp, WIFI_WAIT_CONNECT_TIME) == RT_EOK)
                 {
                     LOG_I("wifi power on.");
                     wifi_dev.wifi_state = WIFI_STATE_PARA_INIT;
@@ -600,8 +558,6 @@ static void wifi_process_entry(void *parameter)
                 wifi_dev.wifi_state = WIFI_STATE_RESET;
             break;
         }
-
-        rt_mutex_release(wifi_dev.mtx);
     }
 }
 
@@ -781,7 +737,7 @@ static void urc_ipd_cb(struct at_client *client, const char *data, rt_size_t siz
 
     rt_hw_interrupt_enable(level);
     
-    rt_rbb_blk_t block = rt_rbb_blk_alloc(session->recv_rbb, len);
+    rt_rbb_blk_t block = rt_rbb_blk_alloc(&(session->recv_rbb), len);
     if(block == RT_NULL)
         return;
     rt_memset(block->buf, 0, block->size);
@@ -789,7 +745,7 @@ static void urc_ipd_cb(struct at_client *client, const char *data, rt_size_t siz
     if(at_client_recv((char *)(block->buf), block->size, 20) != block->size)
     {
         LOG_E("socket (%d) recv size (%d) data failed.", socket, len);
-        rt_rbb_blk_free(session->recv_rbb, block);
+        rt_rbb_blk_free(&(session->recv_rbb), block);
         return;
     }
 
@@ -836,38 +792,63 @@ static struct at_urc urc_table[] = {
 
 static int wifi_init(void)
 {
-    wifi_dev.mtx = rt_mutex_create("wifi", RT_IPC_FLAG_FIFO);
-    RT_ASSERT(wifi_dev.mtx != RT_NULL);
-    wifi_dev.evt = rt_event_create("wifi", RT_IPC_FLAG_FIFO);
-    RT_ASSERT(wifi_dev.evt != RT_NULL);
+    rt_event_init(&(wifi_dev.evt), "wifi", RT_IPC_FLAG_FIFO);
     wifi_dev.wifi_state = WIFI_STATE_RESET;
     for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
     {
         wifi_dev.sessions[i].link_id = -1;
         wifi_dev.sessions[i].timeout = rt_tick_get();
-        wifi_dev.sessions[i].recv_rbb = rt_rbb_create(WIFI_CLIENT_RBB_BUFSZ, WIFI_CLIENT_RBB_BLKNUM);
-        RT_ASSERT(wifi_dev.sessions[i].recv_rbb != RT_NULL);
+        rt_rbb_init(&(wifi_dev.sessions[i].recv_rbb),
+                    wifi_dev.sessions[i].recv_rbb_buf,
+                    WIFI_CLIENT_RBB_BUFSZ,
+                    wifi_dev.sessions[i].recv_rbb_blk,
+                    WIFI_CLIENT_RBB_BLKNUM);
         wifi_dev.sessions[i].state = WIFI_SESSION_STATE_CLOSED;
     }
 
     struct usr_device_usart *dev = (struct usr_device_usart *)usr_device_find(WIFI_CLIENT_DEVICE_NAME);
+    RT_ASSERT(dev);
     struct usr_device_usart_parameter parameter = dev->parameter;
     parameter.baudrate = 115200;
     parameter.parity = UART_PARITY_NONE;
     parameter.wlen = UART_WORDLENGTH_8B;
     parameter.stblen = UART_STOPBITS_1;
     usr_device_control(&(dev->parent), USR_DEVICE_USART_CMD_SET_PARAMETER, &parameter);
+    struct usr_device_usart_buffer buffer;
+    buffer.send_buf = usart_send_buf;
+    buffer.send_bufsz = sizeof(usart_send_buf);
+    buffer.read_buf = usart_read_buf;
+    buffer.read_bufsz = sizeof(usart_read_buf);
+    usr_device_control(&(dev->parent), USR_DEVICE_USART_CMD_SET_BUFFER, &buffer);
+    usr_device_init(&(dev->parent));
 
-    at_client_init(WIFI_CLIENT_DEVICE_NAME, WIFI_RECV_BUFF_LEN);
+    at_resp_init(&at_resp, (char *)at_resp_buf, sizeof(at_resp_buf), 0, rt_tick_from_millisecond(300));
+    at_client_t client = at_client_init(&(dev->parent), (char *)at_recv_line_buf, sizeof(at_recv_line_buf));
+    RT_ASSERT(client);
     /* register URC data execution function  */
     at_set_urc_table(urc_table, sizeof(urc_table) / sizeof(urc_table[0]));
+    rt_thread_init(&at_parser,
+                   "wifi_clnt",
+                   (void (*)(void *parameter))client_parser,
+                   client,
+                   &at_parser_stack[0],
+                   sizeof(at_parser_stack),
+                   1,
+                   100);
+    rt_thread_startup(&at_parser);
 
     drv_pin_mode(WIFI_POWER_PIN, PIN_MODE_OUTPUT);
     drv_pin_mode(WIFI_RESET_PIN, PIN_MODE_OUTPUT);
 
-    rt_thread_t tid = rt_thread_create("wifi_process", wifi_process_entry, RT_NULL, 2048, 2, 100);
-    RT_ASSERT(tid != RT_NULL);
-    rt_thread_startup(tid);
+    rt_thread_init(&wifi_thread,
+                   "wifi_process",
+                   wifi_process_entry,
+                   RT_NULL,
+                   &wifi_thread_stack[0],
+                   sizeof(wifi_thread_stack),
+                   2,
+                   100);
+    rt_thread_startup(&wifi_thread);
 
     return RT_EOK;
 }

@@ -13,7 +13,7 @@
 #define __AT_H__
 
 #include <rtthread.h>
-#include "drv_usart.h"
+#include "usr_device.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -154,7 +154,7 @@ typedef struct at_urc *at_urc_t;
 
 struct at_urc_table
 {
-    size_t urc_size;
+    rt_size_t urc_size;
     const struct at_urc *urc;
 };
 typedef struct at_urc *at_urc_table_t;
@@ -172,17 +172,13 @@ struct at_client
     rt_size_t recv_line_len;
     /* The maximum supported receive data length */
     rt_size_t recv_bufsz;
-    rt_sem_t rx_notice;
-    rt_mutex_t lock;
+    struct rt_semaphore rx_notice;
 
     at_response_t resp;
-    rt_sem_t resp_notice;
+    struct rt_semaphore resp_notice;
     at_resp_status_t resp_status;
 
-    struct at_urc_table *urc_table;
-    rt_size_t urc_table_size;
-
-    rt_thread_t parser;
+    struct at_urc_table urc_table;
 };
 typedef struct at_client *at_client_t;
 #endif /* AT_USING_CLIENT */
@@ -205,7 +201,8 @@ int at_req_parse_args(const char *req_args, const char *req_expr, ...);
 #ifdef AT_USING_CLIENT
 
 /* AT client initialize and start*/
-int at_client_init(const char *dev_name,  rt_size_t recv_bufsz);
+at_client_t at_client_init(usr_device_t dev, char *recv_line_buf, rt_size_t recv_bufsz);
+void client_parser(at_client_t client);
 
 /* ========================== multiple AT client function ============================ */
 
@@ -214,7 +211,7 @@ at_client_t at_client_get(const char *dev_name);
 at_client_t at_client_get_first(void);
 
 /* AT client wait for connection to external devices. */
-int at_client_obj_wait_connect(at_client_t client, rt_uint32_t timeout);
+int at_client_obj_wait_connect(at_client_t client, at_response_t resp, rt_uint32_t timeout);
 
 /* AT client send or receive data */
 rt_size_t at_client_obj_send(at_client_t client, const char *buf, rt_size_t size);
@@ -230,9 +227,8 @@ int at_obj_set_urc_table(at_client_t client, const struct at_urc * table, rt_siz
 int at_obj_exec_cmd(at_client_t client, at_response_t resp, const char *cmd_expr, ...);
 
 /* AT response object create and delete */
-at_response_t at_create_resp(rt_size_t buf_size, rt_size_t line_num, rt_int32_t timeout);
-void at_delete_resp(at_response_t resp);
-at_response_t at_resp_set_info(at_response_t resp, rt_size_t buf_size, rt_size_t line_num, rt_int32_t timeout);
+int at_resp_init(at_response_t resp, char *buf, rt_size_t buf_size, rt_size_t line_num, rt_int32_t timeout);
+int at_resp_set_info(at_response_t resp, rt_size_t line_num, rt_int32_t timeout);
 
 /* AT response line buffer get and parse response buffer arguments */
 const char *at_resp_get_line(at_response_t resp, rt_size_t resp_line);
@@ -248,7 +244,7 @@ int at_resp_parse_line_args_by_kw(at_response_t resp, const char *keyword, const
  */
 
 #define at_exec_cmd(resp, ...)                   at_obj_exec_cmd(at_client_get_first(), resp, __VA_ARGS__)
-#define at_client_wait_connect(timeout)          at_client_obj_wait_connect(at_client_get_first(), timeout)
+#define at_client_wait_connect(resp, timeout)    at_client_obj_wait_connect(at_client_get_first(), resp, timeout)
 #define at_client_send(buf, size)                at_client_obj_send(at_client_get_first(), buf, size)
 #define at_client_recv(buf, size, timeout)       at_client_obj_recv(at_client_get_first(), buf, size, timeout)
 #define at_set_end_sign(ch)                      at_obj_set_end_sign(at_client_get_first(), ch)

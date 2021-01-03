@@ -4,7 +4,9 @@
 #include "ringblk_buf.h"
 #include "usr_device.h"
 
-#define WIFI_SERVER_MAX_CONN        5
+#define WIFI_SERVER_MAX_CONN            5
+#define WIFI_CLIENT_RBB_BUFSZ           512
+#define WIFI_CLIENT_RBB_BLKNUM          10
 
 typedef enum
 {
@@ -26,7 +28,9 @@ struct wifi_session
 {
     int link_id;
     rt_tick_t timeout;
-    rt_rbb_t recv_rbb;
+    rt_uint8_t recv_rbb_buf[WIFI_CLIENT_RBB_BUFSZ];
+    struct rt_rbb_blk recv_rbb_blk[WIFI_CLIENT_RBB_BLKNUM];
+    struct rt_rbb recv_rbb;
     wifi_session_state state;
 };
 
@@ -34,8 +38,7 @@ struct wifi_device
 {
     struct usr_device parent;
 
-    rt_mutex_t mtx;
-    rt_event_t evt;
+    struct rt_event evt;
     wifi_state_t wifi_state;
     struct wifi_session sessions[WIFI_SERVER_MAX_CONN];
     

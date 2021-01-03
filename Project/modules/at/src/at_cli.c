@@ -13,18 +13,24 @@
 #include <string.h>
 #include <rtthread.h>
 #include <rthw.h>
+#include "ringbuffer.h"
 
 #ifdef AT_USING_CLI
 
 #define AT_CLI_FIFO_SIZE                      256
 
+ALIGN(RT_ALIGN_SIZE)
 static struct rt_semaphore console_rx_notice;
-static struct rt_ringbuffer *console_rx_fifo = RT_NULL;
+static rt_uint8_t console_rx_fifo_buf[AT_CLI_FIFO_SIZE];
+static struct rt_ringbuffer console_rx_fifo;
 static rt_err_t (*odev_rx_ind)(usr_device_t dev, rt_size_t size) = RT_NULL;
 
 #ifdef AT_USING_CLIENT
 static struct rt_semaphore client_rx_notice;
-static struct rt_ringbuffer *client_rx_fifo = RT_NULL;
+static rt_uint8_t client_rx_fifo_buf[AT_CLI_FIFO_SIZE];
+static struct rt_ringbuffer client_rx_fifo;
+static rt_uint8_t at_client_stack[512];
+static struct rt_thread at_client;
 #endif 
 
 static char console_getchar(void)
@@ -32,14 +38,14 @@ static char console_getchar(void)
     char ch;
 
     rt_sem_take(&console_rx_notice, RT_WAITING_FOREVER);
-    rt_ringbuffer_getchar(console_rx_fifo, (rt_uint8_t *)&ch);
+    rt_ringbuffer_getchar(&console_rx_fifo, (rt_uint8_t *)&ch);
 
     return ch;
 }
 
 static rt_err_t console_getchar_rx_ind(usr_device_t dev, rt_size_t size)
 {
-    uint8_t ch;
+    rt_uint8_t ch;
     rt_size_t i;
 
     for (i = 0; i < size; i++)
@@ -47,7 +53,7 @@ static rt_err_t console_getchar_rx_ind(usr_device_t dev, rt_size_t size)
         /* read a char */
         if (usr_device_read(dev, 0, &ch, 1))
         {
-            rt_ringbuffer_put_force(console_rx_fifo, &ch, 1);
+            rt_ringbuffer_put_force(&console_rx_fifo, &ch, 1);
             rt_sem_release(&console_rx_notice);
         }
     }
@@ -61,11 +67,7 @@ void at_cli_init(void)
     usr_device_t console;
 
     rt_sem_init(&console_rx_notice, "cli_c", 0, RT_IPC_FLAG_FIFO);
-
-    /* create RX FIFO */
-    console_rx_fifo = rt_ringbuffer_create(AT_CLI_FIFO_SIZE);
-    /* created must success */
-    RT_ASSERT(console_rx_fifo);
+    rt_ringbuffer_init(&console_rx_fifo, console_rx_fifo_buf, sizeof(console_rx_fifo_buf));
 
     int_lvl = rt_hw_interrupt_disable();
     console = usr_device_find(RT_CONSOLE_DEVICE_NAME);
@@ -94,7 +96,6 @@ void at_cli_deinit(void)
     rt_hw_interrupt_enable(int_lvl);
 
     rt_sem_detach(&console_rx_notice);
-    rt_ringbuffer_destroy(console_rx_fifo);
 }
 
 #ifdef AT_USING_SERVER
@@ -166,7 +167,7 @@ static char client_getchar(void)
     char ch;
 
     rt_sem_take(&client_rx_notice, RT_WAITING_FOREVER);
-    rt_ringbuffer_getchar(client_rx_fifo, (rt_uint8_t *)&ch);
+    rt_ringbuffer_getchar(&client_rx_fifo, (rt_uint8_t *)&ch);
 
     return ch;
 }
@@ -184,7 +185,7 @@ static void at_client_entry(void *param)
 
 static rt_err_t client_getchar_rx_ind(usr_device_t dev, rt_size_t size)
 {
-    uint8_t ch;
+    rt_uint8_t ch;
     rt_size_t i;
 
     for (i = 0; i < size; i++)
@@ -192,14 +193,14 @@ static rt_err_t client_getchar_rx_ind(usr_device_t dev, rt_size_t size)
         /* read a char */
         if (usr_device_read(dev, 0, &ch, 1))
         {
-            rt_ringbuffer_put_force(client_rx_fifo, &ch, 1);
+            rt_ringbuffer_put_force(&client_rx_fifo, &ch, 1);
             rt_sem_release(&client_rx_notice);
         }
     }
 
     return RT_EOK;
 }
-static void client_cli_parser(at_client_t  client)
+static void client_cli_parser(at_client_t client)
 {
 #define ESC_KEY                 0x1B
 #define BACKSPACE_KEY           0x08
@@ -211,7 +212,6 @@ static void client_cli_parser(at_client_t  client)
     rt_size_t cur_line_len = 0;
     static rt_err_t (*client_odev_rx_ind)(usr_device_t dev, rt_size_t size) = RT_NULL;
     rt_base_t int_lvl;
-    rt_thread_t at_client;
     at_status_t client_odev_status;
 
     if (client)
@@ -231,61 +231,60 @@ static void client_cli_parser(at_client_t  client)
         }
 
         rt_sem_init(&client_rx_notice, "cli_r", 0, RT_IPC_FLAG_FIFO);
-        client_rx_fifo = rt_ringbuffer_create(AT_CLI_FIFO_SIZE);
+        rt_ringbuffer_init(&client_rx_fifo, client_rx_fifo_buf, sizeof(client_rx_fifo_buf));
+        rt_thread_init(&at_client,
+                       "at_cli",
+                       at_client_entry,
+                       RT_NULL,
+                       &at_client_stack[0],
+                       sizeof(at_client_stack),
+                       4,
+                       100);
 
-        at_client = rt_thread_create("at_cli", at_client_entry, RT_NULL, 512, 4, 100);
-        if (client_rx_fifo && at_client)
+        rt_kprintf("======== Welcome to using RT-Thread AT command client cli ========\n");
+        rt_kprintf("Cli will forward your command to server port(%s). Press 'ESC' to exit.\n", client->dev->name);
+        rt_thread_startup(&at_client);
+        /* process user input */
+        while (ESC_KEY != (ch = console_getchar()))
         {
-            rt_kprintf("======== Welcome to using RT-Thread AT command client cli ========\n");
-            rt_kprintf("Cli will forward your command to server port(%s). Press 'ESC' to exit.\n", client->dev->name);
-            rt_thread_startup(at_client);
-            /* process user input */
-            while (ESC_KEY != (ch = console_getchar()))
+            if (ch == BACKSPACE_KEY || ch == DELECT_KEY)
             {
-                if (ch == BACKSPACE_KEY || ch == DELECT_KEY)
+                if (cur_line_len)
                 {
-                    if (cur_line_len)
-                    {
-                        cur_line[--cur_line_len] = 0;
-                        rt_kprintf("\b \b");
-                    }
-                    continue;
+                    cur_line[--cur_line_len] = 0;
+                    rt_kprintf("\b \b");
                 }
-                else if (ch == '\r' || ch == '\n')
-                {
-                    /* execute a AT request */
-                    if (cur_line_len)
-                    {
-                        rt_kprintf("\n");
-                        at_obj_exec_cmd(client, RT_NULL, "%.*s", cur_line_len, cur_line);
-                    }
-                    cur_line_len = 0;
-                }
-                else
-                {
-                    rt_kprintf("%c", ch);
-                    cur_line[cur_line_len++] = ch;
-                }
+                continue;
             }
-
-            /* restore client status */
-            client->status = client_odev_status;
-
-            /* restore client device RX indicate */
+            else if (ch == '\r' || ch == '\n')
             {
-                int_lvl = rt_hw_interrupt_disable();
-                usr_device_set_rx_indicate(client->dev, client_odev_rx_ind);
-                rt_hw_interrupt_enable(int_lvl);
+                /* execute a AT request */
+                if (cur_line_len)
+                {
+                    rt_kprintf("\n");
+                    at_obj_exec_cmd(client, RT_NULL, "%.*s", cur_line_len, cur_line);
+                }
+                cur_line_len = 0;
             }
-
-            rt_thread_delete(at_client);
-            rt_sem_detach(&client_rx_notice);
-            rt_ringbuffer_destroy(client_rx_fifo);
+            else
+            {
+                rt_kprintf("%c", ch);
+                cur_line[cur_line_len++] = ch;
+            }
         }
-        else
+
+        /* restore client status */
+        client->status = client_odev_status;
+
+        /* restore client device RX indicate */
         {
-            rt_kprintf("No mem for AT cli client\n");
+            int_lvl = rt_hw_interrupt_disable();
+            usr_device_set_rx_indicate(client->dev, client_odev_rx_ind);
+            rt_hw_interrupt_enable(int_lvl);
         }
+
+        rt_thread_detach(&at_client);
+        rt_sem_detach(&client_rx_notice);
     }
     else
     {
@@ -296,7 +295,6 @@ static void client_cli_parser(at_client_t  client)
 
 static void at(int argc, char **argv)
 {
-
     if (argc != 2 && argc != 3)
     {
         rt_kprintf("Please input '<server|client [dev_name]>' \n");
