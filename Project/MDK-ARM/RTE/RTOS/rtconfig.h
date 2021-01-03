@@ -210,12 +210,6 @@
 // <o>the client timeout(/s) of wifi
 //  <i>the client timeout(/s) of wifi
 #define WIFI_CLIENT_TIMEOUT         10
-// <s>the ssid of wifi station
-//  <i>the ssid of wifi station
-#define WIFI_STATION_SSID           "mlw-home"
-// <s>the password of wifi station
-//  <i>the password of wifi station
-#define WIFI_STATION_PASSWORD       "mlw19970517"
 // </h>
 
 // <<< end of configuration section >>>

@@ -8,6 +8,8 @@
 #define WIFI_CLIENT_RBB_BUFSZ           512
 #define WIFI_CLIENT_RBB_BLKNUM          10
 
+#define USR_DEVICE_WIFI_CMD_SMART       0x01
+
 typedef enum
 {
     WIFI_STATE_RESET = 0,
@@ -38,6 +40,8 @@ struct wifi_device
 {
     struct usr_device parent;
 
+    rt_uint8_t init_ok;
+    rt_uint8_t smart_flag;
     struct rt_event evt;
     wifi_state_t wifi_state;
     struct wifi_session sessions[WIFI_SERVER_MAX_CONN];
@@ -45,6 +49,8 @@ struct wifi_device
     rt_uint16_t error_cnt;
     rt_tick_t wifi_timeout;
 
+    char ssid[100];
+    int rssi;
     char ip[16];
     char gateway[16];
     char netmask[16];

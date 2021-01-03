@@ -3,7 +3,6 @@
 #include "drv_usart.h"
 #include "init_module.h"
 #include "at.h"
-#include "led.h"
 #include <string.h>
 #include <stdio.h>
 #include <rthw.h>
@@ -21,6 +20,9 @@
 
 #define WIFI_EVENT_SEND_OK              (1UL << 0)
 #define WIFI_EVENT_SEND_FAIL            (1UL << 1)
+#define WIFI_EVENT_SMARTCONFIG_SUCCESS  (1UL << 2)
+#define WIFI_EVENT_SMARTCONFIG_FAILED   (1UL << 3)
+
 
 #define WIFI_SET_EVENT(socket, event)   ((1UL << (socket + 16)) | (event))
 
@@ -144,14 +146,18 @@ static int wifi_para_init(void)
     do
     {
         WIFI_AT_SEND_CMD(resp, 0, 500, "ATE0");
+        rt_thread_mdelay(100);
         WIFI_AT_SEND_CMD(resp, 0, 500, "AT+GMR");
         for (int i = 0; i < resp->line_counts - 1; i++)
         {
             LOG_I("%s", at_resp_get_line(resp, i + 1));
         }
-        rt_thread_mdelay(1000);
+        rt_thread_mdelay(100);
 
-        WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CWMODE_CUR=1");
+        WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CWMODE_DEF=1");
+        rt_thread_mdelay(100);
+        WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CWAUTOCONN=1");
+        rt_thread_mdelay(100);
 
         result = RT_EOK;
     }while(0);
@@ -159,25 +165,117 @@ static int wifi_para_init(void)
     return result;
 }
 
+static int wifi_smart_config(void)
+{
+    if(!wifi_dev.smart_flag)
+        return RT_EOK;
+
+    at_response_t resp = &at_resp;
+    at_resp_set_info(resp, 0, 1000);
+
+    rt_thread_mdelay(100);
+    wifi_event_recv(WIFI_EVENT_SMARTCONFIG_SUCCESS | WIFI_EVENT_SMARTCONFIG_FAILED,
+                    0, RT_EVENT_FLAG_OR);
+    if(at_exec_cmd(resp, "AT+CWSTARTSMART=3") < 0)
+    {
+        LOG_W("smartconfig start error.");
+        return -RT_ERROR;
+    }
+    
+    LOG_I("smartconfig start success.");
+
+    int event_result = wifi_event_recv(WIFI_EVENT_SMARTCONFIG_SUCCESS | WIFI_EVENT_SMARTCONFIG_FAILED,
+                                       WIFI_SMART_TIMEOUT * 1000, RT_EVENT_FLAG_OR);
+
+    int result = -RT_ERROR;
+    do
+    {
+        if(event_result < 0)
+            break;
+        
+        if(event_result & WIFI_EVENT_SMARTCONFIG_FAILED)
+        {
+            LOG_W("smartconfig timeout.");
+            break;
+        }
+
+        if(!(event_result & WIFI_EVENT_SMARTCONFIG_SUCCESS))
+        {
+            LOG_W("smartconfig error.");
+            break;
+        }
+
+        LOG_I("smartconfig success.");
+        
+        result = RT_EOK;
+    }while(0);
+
+    at_exec_cmd(RT_NULL, "AT+CWSTOPSMART");
+    rt_thread_mdelay(1000);
+    wifi_dev.smart_flag = 0;
+
+    return result;
+}
+
+static int wifi_check_net_status(int timeout)
+{
+    at_response_t resp = &at_resp;
+    at_resp_set_info(resp, 0, 1000);
+
+    rt_uint8_t error_cnt = 0;
+    rt_tick_t tick_timeout = rt_tick_get() + rt_tick_from_millisecond(timeout);
+    char query_kw[50];
+    snprintf(query_kw, sizeof(query_kw), "STATUS:2");
+
+    while(1)
+    {
+        if((rt_tick_get() - tick_timeout) < (RT_TICK_MAX / 2))
+        {
+            LOG_W("net status check timeout.");
+            return -RT_ERROR;
+        }
+        
+        if(error_cnt >= 3)
+        {
+            LOG_W("net status check error.");
+            return -RT_ERROR;
+        }
+        
+        if(at_exec_cmd(resp, "AT+CIPSTATUS") < 0)
+            error_cnt++;
+        
+        const char *query_result = at_resp_get_line_by_kw(resp, query_kw);
+        if(query_result)
+            break;
+
+        rt_thread_mdelay(200);
+    }
+
+    LOG_I("net status check success.");
+    return RT_EOK;
+}
+
 static int wifi_net_init(void)
 {
     int result = -RT_ERROR;
 
     at_response_t resp = &at_resp;
+    int net_check_timeout = 20000;
     do
     {
-        WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CWDHCP_CUR=1,1");
-        rt_thread_mdelay(100);
-
-        at_resp_set_info(resp, 0, 30000);
-        if(at_exec_cmd(resp, "AT+CWJAP_CUR=\"%s\",\"%s\"", WIFI_STATION_SSID, WIFI_STATION_PASSWORD) < 0)
-        {
-            LOG_E("join ap failed.");
+        if(wifi_dev.smart_flag)
+            net_check_timeout = 5000;
+        
+        if(wifi_smart_config() != RT_EOK)
             break;
-        }
-        rt_thread_mdelay(100);
 
-        WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CIPSTA_CUR?");
+        if(wifi_check_net_status(net_check_timeout) != RT_EOK)
+            break;
+        
+        rt_thread_mdelay(100);
+        at_exec_cmd(RT_NULL, "AT+CWJAP_CUR?");
+        rt_thread_mdelay(1000);
+        at_exec_cmd(RT_NULL, "AT+CIPSTA_CUR?");
         rt_thread_mdelay(1000);
 
         WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CIPMODE=0");
@@ -207,19 +305,15 @@ static int wifi_net_init(void)
     return result;
 }
 
-static int wifi_get_ip(void)
+static int wifi_get_info(void)
 {
-    int result = -RT_ERROR;
+    rt_thread_mdelay(100);
+    at_exec_cmd(RT_NULL, "AT+CWJAP_CUR?");
+    rt_thread_mdelay(200);
+    at_exec_cmd(RT_NULL, "AT+CIPSTA_CUR?");
+    rt_thread_mdelay(200);
 
-    at_response_t resp = &at_resp;
-    do
-    {
-        WIFI_AT_SEND_CMD(resp, 0, 500, "AT+CIPSTA_CUR?");
-
-        result = RT_EOK;
-    }while(0);
-
-    return result;
+    return RT_EOK;
 }
 
 static int wifi_socket_close(int socket)
@@ -332,7 +426,6 @@ static int wifi_socket_send(int socket, const uint8_t *buf, int buf_len)
         LOG_E("socket (%d) send failed.", socket);
     else
     {
-        led_control(LED_CMD_WIFI_DATA);
         LOG_D("socket (%d) send ok.", socket);
     }
 
@@ -457,18 +550,16 @@ static int wifi_net_process(void)
 
 static void wifi_process_entry(void *parameter)
 {
-    rt_tick_t ip_tick_timeout = rt_tick_get() + rt_tick_from_millisecond(10 * 1000);
+    rt_tick_t info_tick_timeout = 0;
 
     while(1)
     {
-        rt_thread_mdelay(10);
-
-        if((rt_tick_get() - ip_tick_timeout) < (RT_TICK_MAX / 2))
+        if((rt_tick_get() - info_tick_timeout) < (RT_TICK_MAX / 2))
         {
             if(wifi_dev.wifi_state == WIFI_STATE_NET_PROCESS)
-                wifi_get_ip();
+                wifi_get_info();
 
-            ip_tick_timeout = rt_tick_get() + rt_tick_from_millisecond(10 * 1000);
+            info_tick_timeout = rt_tick_get() + rt_tick_from_millisecond(5 * 1000);
         }
 
         switch(wifi_dev.wifi_state)
@@ -476,20 +567,21 @@ static void wifi_process_entry(void *parameter)
             case WIFI_STATE_RESET:
             {
                 LOG_W("Reset wifi.");
-                led_control(LED_CMD_WIFI_RESET);
                 rt_event_control(&(wifi_dev.evt), RT_IPC_CMD_RESET, RT_NULL);
                 wifi_sessions_clean(RT_NULL);
+                rt_memset(wifi_dev.ssid, 0, sizeof(wifi_dev.ssid));
+                wifi_dev.rssi = 0;
                 rt_memset(wifi_dev.ip, 0, sizeof(wifi_dev.ip));
                 rt_memset(wifi_dev.gateway, 0, sizeof(wifi_dev.gateway));
                 rt_memset(wifi_dev.netmask, 0, sizeof(wifi_dev.netmask));
 
                 drv_pin_write(WIFI_POWER_PIN, PIN_HIGH);
-                rt_thread_mdelay(1000);
+                rt_thread_mdelay(100);
 
                 drv_pin_write(WIFI_RESET_PIN, PIN_LOW);
-                rt_thread_mdelay(200);
+                rt_thread_mdelay(100);
                 drv_pin_write(WIFI_RESET_PIN, PIN_HIGH);
-                rt_thread_mdelay(2000);
+                rt_thread_mdelay(1000);
 
                 wifi_dev.wifi_state = WIFI_STATE_POWER_ON;
                 wifi_dev.error_cnt = 0;
@@ -502,7 +594,6 @@ static void wifi_process_entry(void *parameter)
                 {
                     LOG_I("wifi power on.");
                     wifi_dev.wifi_state = WIFI_STATE_PARA_INIT;
-                    led_control(LED_CMD_WIFI_DISCONNECT);
                 }
                 else
                 {
@@ -539,7 +630,6 @@ static void wifi_process_entry(void *parameter)
                     LOG_I("wifi net init success.");
                     wifi_dev.wifi_state = WIFI_STATE_NET_PROCESS;
                     wifi_dev.wifi_timeout = rt_tick_get() + rt_tick_from_millisecond(WIFI_NET_TIMEOUT * 1000);
-                    led_control(LED_CMD_WIFI_CONNECTED);
                 }
             }
             break;
@@ -558,6 +648,8 @@ static void wifi_process_entry(void *parameter)
                 wifi_dev.wifi_state = WIFI_STATE_RESET;
             break;
         }
+
+        rt_thread_mdelay(10);
     }
 }
 
@@ -590,6 +682,38 @@ static void urc_cipsta_cb(struct at_client *client, const char *data, rt_size_t 
         rt_memset(wifi_dev.netmask, 0, sizeof(wifi_dev.netmask));
         rt_memcpy(wifi_dev.netmask, start_ptr, len);
     }
+}
+
+static void urc_cwjap_cb(struct at_client *client, const char *data, rt_size_t size)
+{
+    int rssi = 0;
+    if(sscanf(data, "%*[^,],%*[^,],%*[^,],%d", &rssi) != 1)
+        return;
+
+    const char *start_ptr = strchr(data, '\"');
+    if(start_ptr == RT_NULL)
+        return;
+    start_ptr += 1;
+    const char *end_ptr = strchr(start_ptr, '\"');
+    if(end_ptr == RT_NULL)
+        return;
+    int len = end_ptr - start_ptr;
+    if(len >= sizeof(wifi_dev.ssid))
+        len = sizeof(wifi_dev.ssid) - 1;
+    rt_memset(wifi_dev.ssid, 0, sizeof(wifi_dev.ssid));
+    rt_memcpy(wifi_dev.ssid, start_ptr, len);
+
+    wifi_dev.rssi = rssi;
+}
+
+static void urc_smart_success_cb(struct at_client *client, const char *data, rt_size_t size)
+{
+    wifi_event_send(WIFI_EVENT_SMARTCONFIG_SUCCESS);
+}
+
+static void urc_smart_fail_cb(struct at_client *client, const char *data, rt_size_t size)
+{
+    wifi_event_send(WIFI_EVENT_SMARTCONFIG_FAILED);
 }
 
 static void urc_closed_cb(struct at_client *client, const char *data, rt_size_t size)
@@ -751,7 +875,6 @@ static void urc_ipd_cb(struct at_client *client, const char *data, rt_size_t siz
 
     rt_rbb_blk_put(block);
     session->timeout = rt_tick_get() + rt_tick_from_millisecond(WIFI_CLIENT_TIMEOUT * 1000);
-    led_control(LED_CMD_WIFI_DATA);
 }
 
 static void urc_send_cb(struct at_client *client, const char *data, rt_size_t size)
@@ -781,6 +904,9 @@ static void urc_send_cb(struct at_client *client, const char *data, rt_size_t si
 
 static struct at_urc urc_table[] = {
     {"+CIPSTA_CUR:", "\r\n", urc_cipsta_cb},
+    {"+CWJAP_CUR:", "\r\n", urc_cwjap_cb},
+    {"smartconfig connected wifi", "\r\n", urc_smart_success_cb},
+    {"smartconfig connect fail", "\r\n", urc_smart_fail_cb},
     {"", ",CLOSED\r\n", urc_closed_cb},
     {"", ",CONNECT\r\n", urc_connect_cb},
     {"", "WIFI DISCONNECT\r\n", urc_wifi_disconnect_cb},
@@ -789,6 +915,54 @@ static struct at_urc urc_table[] = {
     {"SEND FAIL", "\r\n", urc_send_cb},
 };
 
+static rt_err_t _wifi_control(usr_device_t dev, int cmd, void *args)
+{
+    rt_err_t result = -RT_ERROR;
+
+    switch(cmd)
+    {
+        case USR_DEVICE_WIFI_CMD_SMART:
+        {
+            if(!wifi_dev.init_ok)
+                break;
+            
+            int enable = (int)args;  
+            rt_thread_detach(&wifi_thread);
+            wifi_dev.smart_flag = enable;
+            wifi_dev.wifi_state = WIFI_STATE_RESET;
+            rt_thread_init(&wifi_thread,
+                           "wifi_process",
+                           wifi_process_entry,
+                           RT_NULL,
+                           &wifi_thread_stack[0],
+                           sizeof(wifi_thread_stack),
+                           2,
+                           100);
+            rt_thread_startup(&wifi_thread);
+
+            result = RT_EOK;
+        }
+        break;
+
+        default:
+        break;
+    }
+
+    return result;
+}
+
+static int drv_hw_wifi_init(void)
+{
+    wifi_dev.parent.init = RT_NULL;
+    wifi_dev.parent.read = RT_NULL;
+    wifi_dev.parent.write = RT_NULL;
+    wifi_dev.parent.control = _wifi_control;
+
+    usr_device_register(&(wifi_dev.parent), "wifi");
+
+    return RT_EOK;
+}
+INIT_BOARD_EXPORT(drv_hw_wifi_init);
 
 static int wifi_init(void)
 {
@@ -850,6 +1024,8 @@ static int wifi_init(void)
                    100);
     rt_thread_startup(&wifi_thread);
 
+    wifi_dev.init_ok = 1;
+
     return RT_EOK;
 }
 
@@ -866,7 +1042,7 @@ INIT_PREV_EXPORT(wifi_init_module_register);
 
 static int print_wifi_param(void)
 {
-    LOG_I("ip:%s, gateway:%s, netmask:%s", wifi_dev.ip, wifi_dev.gateway, wifi_dev.netmask);
+    LOG_I("ssid:%s, rssi:%d, ip:%s, gateway:%s, netmask:%s", wifi_dev.ssid, wifi_dev.rssi, wifi_dev.ip, wifi_dev.gateway, wifi_dev.netmask);
     
     LOG_I("|link_id|state|");
     LOG_I("|-------|-----|");
