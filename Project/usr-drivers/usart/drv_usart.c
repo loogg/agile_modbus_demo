@@ -97,7 +97,13 @@ static rt_size_t _usart_read(usr_device_t dev, rt_off_t pos, void *buffer, rt_si
     rt_size_t len = 0;
 
     rt_base_t level = rt_hw_interrupt_disable();
-    len = rt_ringbuffer_get(&(usart->rx_rb), buffer, size);
+    do
+    {
+        if(usart->reset_flag)
+            break;
+        
+        len = rt_ringbuffer_get(&(usart->rx_rb), buffer, size);
+    }while(0);
     rt_hw_interrupt_enable(level);
 
     return len;
@@ -110,17 +116,19 @@ static rt_size_t _usart_write(usr_device_t dev, rt_off_t pos, const void *buffer
 
     if(!usart->init_ok)
         return 0;
-    if(usart->error_cnt >= USR_DEVICE_USART_MAX_ERROR_CNT)
-        return 0;
     if(size <= 0)
         return size;
     
     int put_len = 0;
 
     rt_base_t level = rt_hw_interrupt_disable();
-    put_len = rt_ringbuffer_put(&(usart->tx_rb), buffer, size);
     do
     {
+        if(usart->error_cnt >= USR_DEVICE_USART_MAX_ERROR_CNT)
+            break;
+
+        put_len = rt_ringbuffer_put(&(usart->tx_rb), buffer, size);
+
         if(usart->tx_activated == RT_TRUE)
             break;
         
@@ -168,6 +176,8 @@ static rt_err_t _usart_control(usr_device_t dev, int cmd, void *args)
             if(usart->init_ok)
                 HAL_UART_Abort(usart->config->handle);
             usart->parameter = *parameter;
+            usart->tx_activated = RT_FALSE;
+            usart->error_cnt = USR_DEVICE_USART_MAX_ERROR_CNT;
             usart->reset_flag = 1;
             rt_hw_interrupt_enable(level);
 
@@ -194,6 +204,8 @@ static rt_err_t _usart_control(usr_device_t dev, int cmd, void *args)
             if(usart->init_ok)
                 HAL_UART_Abort(usart->config->handle);
             usart->buffer = *buffer;
+            usart->tx_activated = RT_FALSE;
+            usart->error_cnt = USR_DEVICE_USART_MAX_ERROR_CNT;
             usart->reset_flag = 1;
             rt_hw_interrupt_enable(level);
 
@@ -409,14 +421,8 @@ INIT_BOARD_EXPORT(drv_hw_usart_init);
 
 #include "main_hook.h"
 
-
 static void drv_usart_monitor(void)
 {
-    static rt_tick_t process_timeout = 2000;
-
-    if((rt_tick_get() - process_timeout) >= (RT_TICK_MAX / 2))
-        return;
-
     rt_slist_t *node;
     rt_slist_for_each(node, &drv_usart_header)
     {
@@ -443,12 +449,12 @@ static void drv_usart_monitor(void)
             }
         }while(0);
 
+        if(usart->error_cnt >= USR_DEVICE_USART_MAX_ERROR_CNT)
+            usart->reset_flag = 1;
+
         if ((rt_tick_get() - usart->rx_timeout) < (RT_TICK_MAX / 2))
             usart->reset_flag = 1;
         rt_hw_interrupt_enable(level);
-
-        if(usart->error_cnt >= USR_DEVICE_USART_MAX_ERROR_CNT)
-            usart->reset_flag = 1;
 
         if(usart->reset_flag)
         {
@@ -463,8 +469,6 @@ static void drv_usart_monitor(void)
             rt_hw_interrupt_enable(level);
         }
     }
-
-    process_timeout = rt_tick_get() + rt_tick_from_millisecond(2000);
 }
 
 static struct main_hook_module _hook_module;
