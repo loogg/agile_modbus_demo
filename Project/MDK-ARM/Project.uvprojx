@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F103xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\usr-drivers\gpio;..\usr-drivers\usart;..\usr-drivers\usart\config;..\modules\init_module;..\modules\ring;..\modules\main_hook;..\modules\usr_device;..\modules\runtime;..\modules\rtu_master;..\modules\console;..\modules\at\include;..\modules\wifi;..\modules\key;..\modules\led;..\packages\agile_modbus\inc;..\packages\agile_led\inc;..\packages\agile_button\inc</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\Application;..\usr-drivers\gpio;..\usr-drivers\usart;..\usr-drivers\usart\config;..\modules\init_module;..\modules\ring;..\modules\main_hook;..\modules\usr_device;..\modules\runtime;..\modules\rtu_master;..\modules\console;..\modules\at\include;..\modules\wifi;..\modules\key;..\modules\led;..\modules\oled;..\packages\agile_modbus\inc;..\packages\agile_led\inc;..\packages\agile_button\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -474,6 +474,11 @@
               <FilePath>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_exti.c</FilePath>
             </File>
             <File>
+              <FileName>stm32f1xx_hal_spi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_spi.c</FilePath>
+            </File>
+            <File>
               <FileName>stm32f1xx_hal_tim.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_tim.c</FilePath>
@@ -602,6 +607,11 @@
               <FileName>usr_device.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\modules\usr_device\usr_device.c</FilePath>
+            </File>
+            <File>
+              <FileName>oled.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\oled\oled.c</FilePath>
             </File>
           </Files>
         </Group>

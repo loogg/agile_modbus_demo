@@ -36,7 +36,7 @@ struct wifi_session
     wifi_session_state state;
 };
 
-struct wifi_device
+struct usr_device_wifi
 {
     struct usr_device parent;
 

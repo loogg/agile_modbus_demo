@@ -46,14 +46,14 @@ static rt_uint8_t at_parser_stack[1536];
 static struct rt_thread at_parser;
 
 /* WIFI */
-static struct wifi_device wifi_dev = {0};
+static struct usr_device_wifi wifi_device = {0};
 static int cur_socket = -1;
 static rt_uint8_t wifi_thread_stack[2048];
 static struct rt_thread wifi_thread;
 
 static int wifi_event_send(uint32_t event)
 {
-    return (int)rt_event_send(&(wifi_dev.evt), event);
+    return (int)rt_event_send(&(wifi_device.evt), event);
 }
 
 static int wifi_event_recv(uint32_t event, rt_int32_t timeout, rt_uint8_t option)
@@ -61,7 +61,7 @@ static int wifi_event_recv(uint32_t event, rt_int32_t timeout, rt_uint8_t option
     int result = 0;
     rt_uint32_t recved;
 
-    result = rt_event_recv(&(wifi_dev.evt), event, option | RT_EVENT_FLAG_CLEAR, timeout, &recved);
+    result = rt_event_recv(&(wifi_device.evt), event, option | RT_EVENT_FLAG_CLEAR, timeout, &recved);
     if (result != RT_EOK)
     {
         return -RT_ETIMEOUT;
@@ -81,9 +81,9 @@ static struct wifi_session *wifi_session_get(int link_id)
 
     for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
     {
-        if(wifi_dev.sessions[i].link_id == link_id)
+        if(wifi_device.sessions[i].link_id == link_id)
         {
-            session = &(wifi_dev.sessions[i]);
+            session = &(wifi_device.sessions[i]);
             break;
         }
     }
@@ -101,20 +101,20 @@ static void wifi_sessions_clean(struct wifi_session *session)
     {
         for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
         {
-            wifi_dev.sessions[i].link_id = -1;
-            wifi_dev.sessions[i].timeout = rt_tick_get();
+            wifi_device.sessions[i].link_id = -1;
+            wifi_device.sessions[i].timeout = rt_tick_get();
 
             rt_rbb_blk_t block = RT_NULL;
             do
             {
-                block = rt_rbb_blk_get(&(wifi_dev.sessions[i].recv_rbb));
+                block = rt_rbb_blk_get(&(wifi_device.sessions[i].recv_rbb));
                 if (block == RT_NULL)
                     break;
 
-                rt_rbb_blk_free(&(wifi_dev.sessions[i].recv_rbb), block);
+                rt_rbb_blk_free(&(wifi_device.sessions[i].recv_rbb), block);
             } while (block != RT_NULL);
 
-            wifi_dev.sessions[i].state = WIFI_SESSION_STATE_CLOSED;
+            wifi_device.sessions[i].state = WIFI_SESSION_STATE_CLOSED;
         }
     }
     else
@@ -167,7 +167,7 @@ static int wifi_para_init(void)
 
 static int wifi_smart_config(void)
 {
-    if(!wifi_dev.smart_flag)
+    if(!wifi_device.smart_flag)
         return RT_EOK;
 
     at_response_t resp = &at_resp;
@@ -215,7 +215,7 @@ static int wifi_smart_config(void)
 
     at_exec_cmd(RT_NULL, "AT+CWSTOPSMART");
     rt_thread_mdelay(1000);
-    wifi_dev.smart_flag = 0;
+    wifi_device.smart_flag = 0;
 
     return result;
 }
@@ -266,7 +266,7 @@ static int wifi_net_init(void)
     int net_check_timeout = 20000;
     do
     {
-        if(wifi_dev.smart_flag)
+        if(wifi_device.smart_flag)
             net_check_timeout = 5000;
         
         if(wifi_smart_config() != RT_EOK)
@@ -490,7 +490,7 @@ static int wifi_net_process(void)
 {
     for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
     {
-        struct wifi_session *session = &(wifi_dev.sessions[i]);
+        struct wifi_session *session = &(wifi_device.sessions[i]);
 
         switch(session->state)
         {
@@ -500,7 +500,7 @@ static int wifi_net_process(void)
             case WIFI_SESSION_STATE_CLOSING:
             {
                 if(wifi_session_close(session) != RT_EOK)
-                    wifi_dev.error_cnt++;
+                    wifi_device.error_cnt++;
             }
             break;
 
@@ -509,7 +509,7 @@ static int wifi_net_process(void)
                 if((rt_tick_get() - session->timeout) < (RT_TICK_MAX / 2))
                 {
                     if(wifi_session_close(session) != RT_EOK)
-                        wifi_dev.error_cnt++;
+                        wifi_device.error_cnt++;
 
                     break;
                 }
@@ -523,7 +523,7 @@ static int wifi_net_process(void)
                 if(rc != RT_EOK)
                 {
                     if(wifi_session_close(session) != RT_EOK)
-                        wifi_dev.error_cnt++;
+                        wifi_device.error_cnt++;
                 }
             }
             break;
@@ -535,17 +535,17 @@ static int wifi_net_process(void)
 
     for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
     {
-        if(wifi_dev.sessions[i].state == WIFI_SESSION_STATE_CONNECTED)
+        if(wifi_device.sessions[i].state == WIFI_SESSION_STATE_CONNECTED)
         {
-            wifi_dev.wifi_timeout = rt_tick_get() + rt_tick_from_millisecond(WIFI_NET_TIMEOUT * 1000);
+            wifi_device.wifi_timeout = rt_tick_get() + rt_tick_from_millisecond(WIFI_NET_TIMEOUT * 1000);
             break;
         }
     }
 
-    if((rt_tick_get() - wifi_dev.wifi_timeout) < (RT_TICK_MAX / 2))
-        wifi_dev.error_cnt = 99;
+    if((rt_tick_get() - wifi_device.wifi_timeout) < (RT_TICK_MAX / 2))
+        wifi_device.error_cnt = 99;
 
-    if(wifi_dev.error_cnt > 5)
+    if(wifi_device.error_cnt > 5)
         return -RT_ERROR;
     
     return RT_EOK;
@@ -559,24 +559,24 @@ static void wifi_process_entry(void *parameter)
     {
         if((rt_tick_get() - info_tick_timeout) < (RT_TICK_MAX / 2))
         {
-            if(wifi_dev.wifi_state == WIFI_STATE_NET_PROCESS)
+            if(wifi_device.wifi_state == WIFI_STATE_NET_PROCESS)
                 wifi_get_info();
 
             info_tick_timeout = rt_tick_get() + rt_tick_from_millisecond(5 * 1000);
         }
 
-        switch(wifi_dev.wifi_state)
+        switch(wifi_device.wifi_state)
         {
             case WIFI_STATE_RESET:
             {
                 LOG_W("Reset wifi.");
-                rt_event_control(&(wifi_dev.evt), RT_IPC_CMD_RESET, RT_NULL);
+                rt_event_control(&(wifi_device.evt), RT_IPC_CMD_RESET, RT_NULL);
                 wifi_sessions_clean(RT_NULL);
-                rt_memset(wifi_dev.ssid, 0, sizeof(wifi_dev.ssid));
-                wifi_dev.rssi = 0;
-                rt_memset(wifi_dev.ip, 0, sizeof(wifi_dev.ip));
-                rt_memset(wifi_dev.gateway, 0, sizeof(wifi_dev.gateway));
-                rt_memset(wifi_dev.netmask, 0, sizeof(wifi_dev.netmask));
+                rt_memset(wifi_device.ssid, 0, sizeof(wifi_device.ssid));
+                wifi_device.rssi = 0;
+                rt_memset(wifi_device.ip, 0, sizeof(wifi_device.ip));
+                rt_memset(wifi_device.gateway, 0, sizeof(wifi_device.gateway));
+                rt_memset(wifi_device.netmask, 0, sizeof(wifi_device.netmask));
 
                 drv_pin_write(WIFI_POWER_PIN, PIN_HIGH);
                 rt_thread_mdelay(100);
@@ -586,8 +586,8 @@ static void wifi_process_entry(void *parameter)
                 drv_pin_write(WIFI_RESET_PIN, PIN_HIGH);
                 rt_thread_mdelay(1000);
 
-                wifi_dev.wifi_state = WIFI_STATE_POWER_ON;
-                wifi_dev.error_cnt = 0;
+                wifi_device.wifi_state = WIFI_STATE_POWER_ON;
+                wifi_device.error_cnt = 0;
             }
             break;
 
@@ -596,12 +596,12 @@ static void wifi_process_entry(void *parameter)
                 if(at_client_wait_connect(&at_resp, WIFI_WAIT_CONNECT_TIME) == RT_EOK)
                 {
                     LOG_I("wifi power on.");
-                    wifi_dev.wifi_state = WIFI_STATE_PARA_INIT;
+                    wifi_device.wifi_state = WIFI_STATE_PARA_INIT;
                 }
                 else
                 {
                     LOG_W("wifi wait connect error, now reseting...");
-                    wifi_dev.wifi_state = WIFI_STATE_RESET;
+                    wifi_device.wifi_state = WIFI_STATE_RESET;
                 }
             }
             break;
@@ -611,12 +611,12 @@ static void wifi_process_entry(void *parameter)
                 if(wifi_para_init() != RT_EOK)
                 {
                     LOG_E("wifi para init failed.");
-                    wifi_dev.wifi_state = WIFI_STATE_RESET;
+                    wifi_device.wifi_state = WIFI_STATE_RESET;
                 }
                 else
                 {
                     LOG_I("wifi para init success.");
-                    wifi_dev.wifi_state = WIFI_STATE_NET_INIT;
+                    wifi_device.wifi_state = WIFI_STATE_NET_INIT;
                 }
             }
             break;
@@ -626,13 +626,13 @@ static void wifi_process_entry(void *parameter)
                 if(wifi_net_init() != RT_EOK)
                 {
                     LOG_E("wifi net init failed.");
-                    wifi_dev.wifi_state = WIFI_STATE_RESET;
+                    wifi_device.wifi_state = WIFI_STATE_RESET;
                 }
                 else
                 {
                     LOG_I("wifi net init success.");
-                    wifi_dev.wifi_state = WIFI_STATE_NET_PROCESS;
-                    wifi_dev.wifi_timeout = rt_tick_get() + rt_tick_from_millisecond(WIFI_NET_TIMEOUT * 1000);
+                    wifi_device.wifi_state = WIFI_STATE_NET_PROCESS;
+                    wifi_device.wifi_timeout = rt_tick_get() + rt_tick_from_millisecond(WIFI_NET_TIMEOUT * 1000);
                 }
             }
             break;
@@ -642,13 +642,13 @@ static void wifi_process_entry(void *parameter)
                 if(wifi_net_process() != RT_EOK)
                 {
                     LOG_E("wifi net process failed.");
-                    wifi_dev.wifi_state = WIFI_STATE_RESET;
+                    wifi_device.wifi_state = WIFI_STATE_RESET;
                 }
             }
             break;
 
             default:
-                wifi_dev.wifi_state = WIFI_STATE_RESET;
+                wifi_device.wifi_state = WIFI_STATE_RESET;
             break;
         }
 
@@ -672,18 +672,18 @@ static void urc_cipsta_cb(struct at_client *client, const char *data, rt_size_t 
 
     if(strstr(data, "+CIPSTA_CUR:ip:"))
     {
-        rt_memset(wifi_dev.ip, 0, sizeof(wifi_dev.ip));
-        rt_memcpy(wifi_dev.ip, start_ptr, len);
+        rt_memset(wifi_device.ip, 0, sizeof(wifi_device.ip));
+        rt_memcpy(wifi_device.ip, start_ptr, len);
     }
     else if(strstr(data, "+CIPSTA_CUR:gateway:"))
     {
-        rt_memset(wifi_dev.gateway, 0, sizeof(wifi_dev.gateway));
-        rt_memcpy(wifi_dev.gateway, start_ptr, len);
+        rt_memset(wifi_device.gateway, 0, sizeof(wifi_device.gateway));
+        rt_memcpy(wifi_device.gateway, start_ptr, len);
     }
     else if(strstr(data, "+CIPSTA_CUR:netmask:"))
     {
-        rt_memset(wifi_dev.netmask, 0, sizeof(wifi_dev.netmask));
-        rt_memcpy(wifi_dev.netmask, start_ptr, len);
+        rt_memset(wifi_device.netmask, 0, sizeof(wifi_device.netmask));
+        rt_memcpy(wifi_device.netmask, start_ptr, len);
     }
 }
 
@@ -701,12 +701,12 @@ static void urc_cwjap_cb(struct at_client *client, const char *data, rt_size_t s
     if(end_ptr == RT_NULL)
         return;
     int len = end_ptr - start_ptr;
-    if(len >= sizeof(wifi_dev.ssid))
-        len = sizeof(wifi_dev.ssid) - 1;
-    rt_memset(wifi_dev.ssid, 0, sizeof(wifi_dev.ssid));
-    rt_memcpy(wifi_dev.ssid, start_ptr, len);
+    if(len >= sizeof(wifi_device.ssid))
+        len = sizeof(wifi_device.ssid) - 1;
+    rt_memset(wifi_device.ssid, 0, sizeof(wifi_device.ssid));
+    rt_memcpy(wifi_device.ssid, start_ptr, len);
 
-    wifi_dev.rssi = rssi;
+    wifi_device.rssi = rssi;
 }
 
 static void urc_smart_success_cb(struct at_client *client, const char *data, rt_size_t size)
@@ -727,7 +727,7 @@ static void urc_closed_cb(struct at_client *client, const char *data, rt_size_t 
     if(socket < 0)
         return;
     
-    if(wifi_dev.wifi_state != WIFI_STATE_NET_PROCESS)
+    if(wifi_device.wifi_state != WIFI_STATE_NET_PROCESS)
         return;
 
     rt_base_t level = rt_hw_interrupt_disable();
@@ -738,11 +738,11 @@ static void urc_closed_cb(struct at_client *client, const char *data, rt_size_t 
 
         for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
         {
-            if ((wifi_dev.sessions[i].link_id >= 0) &&
-                (wifi_dev.sessions[i].link_id == socket) &&
-                (wifi_dev.sessions[i].state > WIFI_SESSION_STATE_CLOSING))
+            if ((wifi_device.sessions[i].link_id >= 0) &&
+                (wifi_device.sessions[i].link_id == socket) &&
+                (wifi_device.sessions[i].state > WIFI_SESSION_STATE_CLOSING))
             {
-                session = &(wifi_dev.sessions[i]);
+                session = &(wifi_device.sessions[i]);
                 break;
             }
         }
@@ -764,7 +764,7 @@ static void urc_connect_cb(struct at_client *client, const char *data, rt_size_t
     if(socket < 0)
         return;
     
-    if(wifi_dev.wifi_state != WIFI_STATE_NET_PROCESS)
+    if(wifi_device.wifi_state != WIFI_STATE_NET_PROCESS)
         return;
 
     rt_base_t level = rt_hw_interrupt_disable();
@@ -784,10 +784,10 @@ static void urc_connect_cb(struct at_client *client, const char *data, rt_size_t
         session = RT_NULL;
         for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
         {
-            if ((wifi_dev.sessions[i].link_id < 0) &&
-                (wifi_dev.sessions[i].state == WIFI_SESSION_STATE_CLOSED))
+            if ((wifi_device.sessions[i].link_id < 0) &&
+                (wifi_device.sessions[i].state == WIFI_SESSION_STATE_CLOSED))
             {
-                session = &(wifi_dev.sessions[i]);
+                session = &(wifi_device.sessions[i]);
                 break;
             }
         }
@@ -805,16 +805,16 @@ static void urc_connect_cb(struct at_client *client, const char *data, rt_size_t
 
 static void urc_wifi_disconnect_cb(struct at_client *client, const char *data, rt_size_t size)
 {
-    if(wifi_dev.wifi_state != WIFI_STATE_NET_PROCESS)
+    if(wifi_device.wifi_state != WIFI_STATE_NET_PROCESS)
         return;
     
     LOG_E("wifi disconnect.");
-    wifi_dev.error_cnt = 99;
+    wifi_device.error_cnt = 99;
 }
 
 static void urc_ipd_cb(struct at_client *client, const char *data, rt_size_t size)
 {
-    if(wifi_dev.wifi_state != WIFI_STATE_NET_PROCESS)
+    if(wifi_device.wifi_state != WIFI_STATE_NET_PROCESS)
         return;
     
     int socket = 0;
@@ -838,10 +838,10 @@ static void urc_ipd_cb(struct at_client *client, const char *data, rt_size_t siz
         
         for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
         {
-            if ((wifi_dev.sessions[i].link_id < 0) &&
-                (wifi_dev.sessions[i].state == WIFI_SESSION_STATE_CLOSED))
+            if ((wifi_device.sessions[i].link_id < 0) &&
+                (wifi_device.sessions[i].state == WIFI_SESSION_STATE_CLOSED))
             {
-                session = &(wifi_dev.sessions[i]);
+                session = &(wifi_device.sessions[i]);
                 break;
             }
         }
@@ -926,13 +926,13 @@ static rt_err_t _wifi_control(usr_device_t dev, int cmd, void *args)
     {
         case USR_DEVICE_WIFI_CMD_SMART:
         {
-            if(!wifi_dev.init_ok)
+            if(!wifi_device.init_ok)
                 break;
             
             int enable = (int)args;  
             rt_thread_detach(&wifi_thread);
-            wifi_dev.smart_flag = enable;
-            wifi_dev.wifi_state = WIFI_STATE_RESET;
+            wifi_device.smart_flag = enable;
+            wifi_device.wifi_state = WIFI_STATE_RESET;
             rt_thread_init(&wifi_thread,
                            "wifi_process",
                            wifi_process_entry,
@@ -954,53 +954,55 @@ static rt_err_t _wifi_control(usr_device_t dev, int cmd, void *args)
     return result;
 }
 
-static int drv_hw_wifi_init(void)
+static int _hw_wifi_init(void)
 {
-    wifi_dev.parent.init = RT_NULL;
-    wifi_dev.parent.read = RT_NULL;
-    wifi_dev.parent.write = RT_NULL;
-    wifi_dev.parent.control = _wifi_control;
+    rt_memset(&wifi_device, 0, sizeof(struct usr_device_wifi));
 
-    usr_device_register(&(wifi_dev.parent), "wifi");
+    wifi_device.parent.init = RT_NULL;
+    wifi_device.parent.read = RT_NULL;
+    wifi_device.parent.write = RT_NULL;
+    wifi_device.parent.control = _wifi_control;
+
+    usr_device_register(&(wifi_device.parent), "wifi");
 
     return RT_EOK;
 }
-INIT_BOARD_EXPORT(drv_hw_wifi_init);
+INIT_BOARD_EXPORT(_hw_wifi_init);
 
 static int wifi_init(void)
 {
-    rt_event_init(&(wifi_dev.evt), "wifi", RT_IPC_FLAG_FIFO);
-    wifi_dev.wifi_state = WIFI_STATE_RESET;
+    rt_event_init(&(wifi_device.evt), "wifi", RT_IPC_FLAG_FIFO);
+    wifi_device.wifi_state = WIFI_STATE_RESET;
     for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
     {
-        wifi_dev.sessions[i].link_id = -1;
-        wifi_dev.sessions[i].timeout = rt_tick_get();
-        rt_rbb_init(&(wifi_dev.sessions[i].recv_rbb),
-                    wifi_dev.sessions[i].recv_rbb_buf,
+        wifi_device.sessions[i].link_id = -1;
+        wifi_device.sessions[i].timeout = rt_tick_get();
+        rt_rbb_init(&(wifi_device.sessions[i].recv_rbb),
+                    wifi_device.sessions[i].recv_rbb_buf,
                     WIFI_CLIENT_RBB_BUFSZ,
-                    wifi_dev.sessions[i].recv_rbb_blk,
+                    wifi_device.sessions[i].recv_rbb_blk,
                     WIFI_CLIENT_RBB_BLKNUM);
-        wifi_dev.sessions[i].state = WIFI_SESSION_STATE_CLOSED;
+        wifi_device.sessions[i].state = WIFI_SESSION_STATE_CLOSED;
     }
 
-    struct usr_device_usart *dev = (struct usr_device_usart *)usr_device_find(WIFI_CLIENT_DEVICE_NAME);
+    usr_device_t dev = usr_device_find(WIFI_CLIENT_DEVICE_NAME);
     RT_ASSERT(dev);
-    struct usr_device_usart_parameter parameter = dev->parameter;
-    parameter.baudrate = 115200;
-    parameter.parity = UART_PARITY_NONE;
-    parameter.wlen = UART_WORDLENGTH_8B;
-    parameter.stblen = UART_STOPBITS_1;
-    usr_device_control(&(dev->parent), USR_DEVICE_USART_CMD_SET_PARAMETER, &parameter);
     struct usr_device_usart_buffer buffer;
     buffer.send_buf = usart_send_buf;
     buffer.send_bufsz = sizeof(usart_send_buf);
     buffer.read_buf = usart_read_buf;
     buffer.read_bufsz = sizeof(usart_read_buf);
-    usr_device_control(&(dev->parent), USR_DEVICE_USART_CMD_SET_BUFFER, &buffer);
-    usr_device_init(&(dev->parent));
+    usr_device_control(dev, USR_DEVICE_USART_CMD_SET_BUFFER, &buffer);
+    struct usr_device_usart_parameter parameter;
+    parameter.baudrate = 115200;
+    parameter.parity = UART_PARITY_NONE;
+    parameter.wlen = UART_WORDLENGTH_8B;
+    parameter.stblen = UART_STOPBITS_1;
+    usr_device_control(dev, USR_DEVICE_USART_CMD_SET_PARAMETER, &parameter);
+    usr_device_init(dev);
 
     at_resp_init(&at_resp, (char *)at_resp_buf, sizeof(at_resp_buf), 0, rt_tick_from_millisecond(300));
-    at_client_t client = at_client_init(&(dev->parent), (char *)at_recv_line_buf, sizeof(at_recv_line_buf));
+    at_client_t client = at_client_init(dev, (char *)at_recv_line_buf, sizeof(at_recv_line_buf));
     RT_ASSERT(client);
     /* register URC data execution function  */
     at_set_urc_table(urc_table, sizeof(urc_table) / sizeof(urc_table[0]));
@@ -1027,7 +1029,7 @@ static int wifi_init(void)
                    100);
     rt_thread_startup(&wifi_thread);
 
-    wifi_dev.init_ok = 1;
+    wifi_device.init_ok = 1;
 
     return RT_EOK;
 }
@@ -1045,13 +1047,13 @@ INIT_PREV_EXPORT(wifi_init_module_register);
 
 static int print_wifi_param(void)
 {
-    LOG_I("ssid:%s, rssi:%d, ip:%s, gateway:%s, netmask:%s", wifi_dev.ssid, wifi_dev.rssi, wifi_dev.ip, wifi_dev.gateway, wifi_dev.netmask);
+    LOG_I("ssid:%s, rssi:%d, ip:%s, gateway:%s, netmask:%s", wifi_device.ssid, wifi_device.rssi, wifi_device.ip, wifi_device.gateway, wifi_device.netmask);
     
     LOG_I("|link_id|state|");
     LOG_I("|-------|-----|");
     for (int i = 0; i < WIFI_SERVER_MAX_CONN; i++)
     {
-        LOG_I("|  %d  |  %d  |", wifi_dev.sessions[i].link_id, wifi_dev.sessions[i].state);
+        LOG_I("|  %d  |  %d  |", wifi_device.sessions[i].link_id, wifi_device.sessions[i].state);
     }
 
     return RT_EOK;

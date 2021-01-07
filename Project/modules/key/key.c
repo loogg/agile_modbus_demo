@@ -6,7 +6,7 @@
 
 ALIGN(RT_ALIGN_SIZE)
 static struct agile_btn key;
-static struct wifi_device *wifi_dev = RT_NULL;
+static struct usr_device_wifi *wifi_dev = RT_NULL;
 
 static void btn_click_event_cb(agile_btn_t *btn)
 {
@@ -18,7 +18,7 @@ static void btn_click_event_cb(agile_btn_t *btn)
 
 static int key_init(void)
 {
-    wifi_dev = (struct wifi_device *)usr_device_find("wifi");
+    wifi_dev = (struct usr_device_wifi *)usr_device_find("wifi");
     RT_ASSERT(wifi_dev);
 
     agile_btn_init(&key, KEY_PIN, PIN_HIGH, PIN_MODE_INPUT_PULLDOWN);

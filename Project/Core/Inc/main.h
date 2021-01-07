@@ -64,6 +64,12 @@ void Error_Handler(void);
 #define WIFI_Power_GPIO_Port GPIOB
 #define WIFI_RST_Pin GPIO_PIN_1
 #define WIFI_RST_GPIO_Port GPIOB
+#define OLED_RES_Pin GPIO_PIN_6
+#define OLED_RES_GPIO_Port GPIOC
+#define OLED_DC_Pin GPIO_PIN_7
+#define OLED_DC_GPIO_Port GPIOC
+#define OLED_CS_Pin GPIO_PIN_8
+#define OLED_CS_GPIO_Port GPIOC
 #define D0_Pin GPIO_PIN_8
 #define D0_GPIO_Port GPIOA
 #define D1_Pin GPIO_PIN_2

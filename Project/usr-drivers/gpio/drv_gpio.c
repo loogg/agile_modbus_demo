@@ -19,7 +19,10 @@ static const struct pin_index pins[] =
     {1, RCC_GPIOD, GPIOD, GPIO_PIN_2},  //D1
     {2, RCC_GPIOA, GPIOA, GPIO_PIN_0},  //WK_UP
     {5, RCC_GPIOB, GPIOB, GPIO_PIN_0},  //WIFI Power
-    {6, RCC_GPIOB, GPIOB, GPIO_PIN_1}   //WIFI RST
+    {6, RCC_GPIOB, GPIOB, GPIO_PIN_1},  //WIFI RST
+    {7, RCC_GPIOC, GPIOC, GPIO_PIN_6},  //OLED RES
+    {8, RCC_GPIOC, GPIOC, GPIO_PIN_7},  //OLED DC
+    {9, RCC_GPIOC, GPIOC, GPIO_PIN_8}   //OLED CS
 };
 
 #define ITEM_NUM(items) sizeof(items) / sizeof(items[0])
