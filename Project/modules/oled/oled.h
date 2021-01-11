@@ -8,8 +8,7 @@
 struct usr_device_oled
 {
     struct usr_device parent;
-
-    
+    struct rt_semaphore sem_lock;
 };
 
 #endif

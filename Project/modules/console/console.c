@@ -57,6 +57,12 @@ int console_init(void)
     buffer.read_buf = usart_read_buf;
     buffer.read_bufsz = sizeof(usart_read_buf);
     usr_device_control(dev, USR_DEVICE_USART_CMD_SET_BUFFER, &buffer);
+    struct usr_device_usart_parameter parameter;
+    parameter.baudrate = 115200;
+    parameter.parity = UART_PARITY_NONE;
+    parameter.wlen = UART_WORDLENGTH_8B;
+    parameter.stblen = UART_STOPBITS_1;
+    usr_device_control(dev, USR_DEVICE_USART_CMD_SET_PARAMETER, &parameter);
     usr_device_init(dev);
 
     init_ok = 1;

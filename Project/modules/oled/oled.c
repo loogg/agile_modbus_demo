@@ -16,6 +16,7 @@
 SPI_HandleTypeDef hspi2;
 DMA_HandleTypeDef hdma_spi2_tx;
 
+ALIGN(RT_ALIGN_SIZE)
 static rt_uint8_t oled_gram[8][128] = {0};
 static struct usr_device_oled oled_device = {0};
 
@@ -59,6 +60,8 @@ static void _oled_hw_init(void)
 
 static void _oled_write_cmd(rt_uint8_t cmd)
 {
+    rt_sem_take(&(oled_device.sem_lock), RT_WAITING_FOREVER);
+
     drv_pin_write(OLED_DC_PIN, PIN_LOW);
     drv_pin_write(OLED_CS_PIN, PIN_LOW);
 
@@ -67,10 +70,14 @@ static void _oled_write_cmd(rt_uint8_t cmd)
 
     drv_pin_write(OLED_CS_PIN, PIN_HIGH);
     drv_pin_write(OLED_DC_PIN, PIN_HIGH);
+
+    rt_sem_release(&(oled_device.sem_lock));
 }
 
 static void _oled_refresh_gram(void)
 {
+    rt_sem_take(&(oled_device.sem_lock), RT_WAITING_FOREVER);
+
     drv_pin_write(OLED_DC_PIN, PIN_HIGH);
     drv_pin_write(OLED_CS_PIN, PIN_LOW);
 
@@ -80,6 +87,8 @@ static void _oled_refresh_gram(void)
 
 static rt_err_t _oled_init(usr_device_t dev)
 {
+    rt_sem_init(&(oled_device.sem_lock), "oled", 1, RT_IPC_FLAG_FIFO);
+
     _oled_hw_init();
 
     drv_pin_write(OLED_RES_PIN, PIN_HIGH);
@@ -95,8 +104,8 @@ static rt_err_t _oled_init(usr_device_t dev)
 	_oled_write_cmd(0x40);//--set start line address  Set Mapping RAM Display Start Line (0x00~0x3F)
 	_oled_write_cmd(0x81);//--set contrast control register
 	_oled_write_cmd(0xCF); // Set SEG Output Current Brightness
-	_oled_write_cmd(0xA1);//--Set SEG/Column Mapping     0xa0×óÓÒ·´ÖÃ 0xa1Õý³£
-	_oled_write_cmd(0xC8);//Set COM/Row Scan Direction   0xc0ÉÏÏÂ·´ÖÃ 0xc8Õý³£
+	_oled_write_cmd(0xA1);//--Set SEG/Column Mapping
+	_oled_write_cmd(0xC8);//Set COM/Row Scan Direction
 	_oled_write_cmd(0xA6);//--set normal display
 	_oled_write_cmd(0xA8);//--set multiplex ratio(1 to 64)
 	_oled_write_cmd(0x3f);//--1/64 duty
@@ -117,10 +126,9 @@ static rt_err_t _oled_init(usr_device_t dev)
 	_oled_write_cmd(0xA4);// Disable Entire Display On (0xa4/0xa5)
 	_oled_write_cmd(0xA6);// Disable Inverse Display On (0xa6/a7) 
 	_oled_write_cmd(0xAF);//--turn on oled panel
-	
+
     _oled_refresh_gram();
-    
-    
+
     return RT_EOK;
 }
 
@@ -163,6 +171,8 @@ INIT_BOARD_EXPORT(_hw_oled_init);
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
     drv_pin_write(OLED_CS_PIN, PIN_HIGH);
+
+    rt_sem_release(&(oled_device.sem_lock));
 
     if(oled_device.parent.tx_complete)
         oled_device.parent.tx_complete(&(oled_device.parent), RT_NULL);
