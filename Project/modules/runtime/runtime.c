@@ -1,5 +1,6 @@
 #include <rtthread.h>
 #include "main_hook.h"
+#include <stdlib.h>
 
 #define DBG_ENABLE
 #define DBG_COLOR

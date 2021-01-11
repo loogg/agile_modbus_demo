@@ -35,7 +35,7 @@
 
 // <o>the stack size of main thread<1-4086>
 //  <i>Default: 512
-#define RT_MAIN_THREAD_STACK_SIZE     512
+#define RT_MAIN_THREAD_STACK_SIZE     1024
 
 // </h>
 
@@ -188,6 +188,114 @@
 //  <i>Default: 128
 #define AT_CMD_MAX_LEN      128
 #endif
+#endif
+// </e>
+
+// <e>ULOG Configuration
+// <i> Enables ULOG
+#define RT_USING_ULOG       1
+#if RT_USING_ULOG == 0
+    #undef RT_USING_ULOG
+#endif
+#ifdef RT_USING_ULOG
+// <c1>Enable syslog format log and API.
+//  <i>Enable syslog format log and API.
+//#define ULOG_USING_SYSLOG
+// </c>
+// <o>Normal mode static output log level
+//  <i>Default: Debug
+//  <0=> Assert
+//  <3=> Error
+//  <4=> Warning
+//  <6=> Information
+//  <7=> Debug
+#define ULOG_OUTPUT_LVL_NORMAL_MODE     7
+// <o>Syslog mode static output log level
+//  <i>Default: DEBUG
+//  <0=> EMERG
+//  <1=> ALERT
+//  <2=> CRIT
+//  <3=> ERR
+//  <4=> WARNING
+//  <5=> NOTICE
+//  <6=> INFO
+//  <7=> DEBUG
+#define ULOG_OUTPUT_LVL_SYSLOG_MODE     7
+
+#ifndef ULOG_USING_SYSLOG
+#define ULOG_OUTPUT_LVL ULOG_OUTPUT_LVL_NORMAL_MODE
+#else
+#define ULOG_OUTPUT_LVL ULOG_OUTPUT_LVL_SYSLOG_MODE
+#endif
+
+// <c1>Enable ISR log.
+//  <i>Enable ISR log.
+//#define ULOG_USING_ISR_LOG
+// </c>
+// <c1>Enable assert check.
+//  <i>Enable assert check.
+//#define ULOG_ASSERT_ENABLE
+// </c>
+// <o>The log's max width.
+//  <i>Default: 128
+#define ULOG_LINE_BUF_SIZE      128
+// <h>log format
+// <c1>Enable float number support. It will using more thread stack.
+//  <i>Enable float number support. It will using more thread stack.
+//#define ULOG_OUTPUT_FLOAT
+// </c>
+// <c1>Enable color log.
+//  <i>Enable color log.
+#define ULOG_USING_COLOR
+// </c>
+// <c1>Enable time information.
+//  <i>Enable time information.
+#define ULOG_OUTPUT_TIME
+// </c>
+// <c1>Enable timestamp format for time. Depends on ULOG_OUTPUT_TIME
+//  <i>Enable timestamp format for time. Depends on ULOG_OUTPUT_TIME
+//#define ULOG_TIME_USING_TIMESTAMP
+// </c>
+// <c1>Enable level information.
+//  <i>Enable level information.
+#define ULOG_OUTPUT_LEVEL
+// </c>
+// <c1>Enable tag information.
+//  <i>Enable tag information.
+#define ULOG_OUTPUT_TAG
+// </c>
+// <c1>Enable thread information.
+//  <i>Enable thread information.
+//#define ULOG_OUTPUT_THREAD_NAME
+// </c>
+// </h>
+// <c1>Enable console backend.
+//  <i>Enable console backend.
+#define ULOG_BACKEND_USING_CONSOLE
+// </c>
+// <c1>Enable runtime log filter.
+//  <i>Enable runtime log filter.
+//#define ULOG_USING_FILTER
+// </c>
+
+#ifdef ULOG_USING_COLOR
+#ifdef ULOG_USING_SYSLOG
+    #error "It's not available on syslog mode."
+#endif
+#endif
+
+#ifdef ULOG_TIME_USING_TIMESTAMP
+#ifndef ULOG_OUTPUT_TIME
+    #error "Please select ULOG_OUTPUT_TIME"
+#endif
+#endif
+
+#ifdef ULOG_USING_SYSLOG
+#if !defined (ULOG_OUTPUT_TIME) || !defined (ULOG_USING_FILTER)
+    #error "Please select ULOG_OUTPUT_TIME and ULOG_USING_FILTER"
+#endif
+#endif
+
 #endif
 // </e>
 

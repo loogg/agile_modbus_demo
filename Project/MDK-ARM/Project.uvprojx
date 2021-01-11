@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F103xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\Application;..\usr-drivers\gpio;..\usr-drivers\usart;..\usr-drivers\usart\config;..\modules\init_module;..\modules\ring;..\modules\main_hook;..\modules\usr_device;..\modules\runtime;..\modules\rtu_master;..\modules\console;..\modules\at\include;..\modules\wifi;..\modules\key;..\modules\led;..\modules\oled;..\packages\agile_modbus\inc;..\packages\agile_led\inc;..\packages\agile_button\inc</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\Application;..\usr-drivers\gpio;..\usr-drivers\usart;..\usr-drivers\usart\config;..\modules\init_module;..\modules\ring;..\modules\main_hook;..\modules\usr_device;..\modules\runtime;..\modules\rtu_master;..\modules\console;..\modules\at\include;..\modules\wifi;..\modules\key;..\modules\led;..\modules\oled;..\modules\ulog;..\modules\ulog\syslog;..\packages\agile_modbus\inc;..\packages\agile_led\inc;..\packages\agile_button\inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -612,6 +612,21 @@
               <FileName>oled.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\modules\oled\oled.c</FilePath>
+            </File>
+            <File>
+              <FileName>ulog.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\ulog\ulog.c</FilePath>
+            </File>
+            <File>
+              <FileName>syslog.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\ulog\syslog\syslog.c</FilePath>
+            </File>
+            <File>
+              <FileName>console_be.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\ulog\backend\console_be.c</FilePath>
             </File>
           </Files>
         </Group>
