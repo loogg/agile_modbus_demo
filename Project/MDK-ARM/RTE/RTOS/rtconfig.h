@@ -238,7 +238,7 @@
 // </c>
 // <o>The log's max width.
 //  <i>Default: 128
-#define ULOG_LINE_BUF_SIZE      128
+#define ULOG_LINE_BUF_SIZE      256
 // <h>log format
 // <c1>Enable float number support. It will using more thread stack.
 //  <i>Enable float number support. It will using more thread stack.
