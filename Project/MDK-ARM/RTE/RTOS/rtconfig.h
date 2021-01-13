@@ -228,14 +228,13 @@
 #define ULOG_OUTPUT_LVL ULOG_OUTPUT_LVL_SYSLOG_MODE
 #endif
 
-// <c1>Enable ISR log.
-//  <i>Enable ISR log.
-//#define ULOG_USING_ISR_LOG
-// </c>
 // <c1>Enable assert check.
 //  <i>Enable assert check.
 //#define ULOG_ASSERT_ENABLE
 // </c>
+// <o>The log's rbb buffer size
+//  <i>Default: 4096
+#define ULOG_RBB_BUFSZ          4096
 // <o>The log's max width.
 //  <i>Default: 128
 #define ULOG_LINE_BUF_SIZE      256
@@ -266,7 +265,7 @@
 // </c>
 // <c1>Enable thread information.
 //  <i>Enable thread information.
-//#define ULOG_OUTPUT_THREAD_NAME
+#define ULOG_OUTPUT_THREAD_NAME
 // </c>
 // </h>
 // <c1>Enable console backend.
@@ -275,8 +274,11 @@
 // </c>
 // <c1>Enable runtime log filter.
 //  <i>Enable runtime log filter.
-//#define ULOG_USING_FILTER
+#define ULOG_USING_FILTER
 // </c>
+// <o>The filter's max num
+//  <i>Default: 10
+#define ULOG_FILTER_NUM          10
 
 #ifdef ULOG_USING_COLOR
 #ifdef ULOG_USING_SYSLOG

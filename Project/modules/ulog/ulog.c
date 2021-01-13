@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include "ulog.h"
 #include "rthw.h"
+#include "ringblk_buf.h"
 
 #ifdef ULOG_USING_SYSLOG
 #include <syslog.h>
@@ -25,15 +26,11 @@
 #include <sys/time.h>
 #endif
 
-#ifdef ULOG_USING_ASYNC_OUTPUT
-#include <rtdevice.h>
-#endif
-
 #ifdef RT_USING_ULOG
 
-/* the number which is max stored line logs */
-#ifndef ULOG_ASYNC_OUTPUT_STORE_LINES
-#define ULOG_ASYNC_OUTPUT_STORE_LINES  (ULOG_ASYNC_OUTPUT_BUF_SIZE * 3 / 2 / ULOG_LINE_BUF_SIZE)
+/* the number of log block */
+#ifndef ULOG_RBB_BLKNUM
+#define ULOG_RBB_BLKNUM                 (ULOG_RBB_BUFSZ / (ULOG_LINE_BUF_SIZE + 1))
 #endif
 
 #ifdef ULOG_USING_COLOR
@@ -78,29 +75,18 @@
 struct rt_ulog
 {
     rt_bool_t init_ok;
-    struct rt_mutex output_locker;
     /* all backends */
     rt_slist_t backend_list;
-    /* the thread log's line buffer */
-    char log_buf_th[ULOG_LINE_BUF_SIZE + 1];
-
-#ifdef ULOG_USING_ISR_LOG
-    /* the ISR log's line buffer */
-    rt_base_t output_locker_isr_lvl;
-    char log_buf_isr[ULOG_LINE_BUF_SIZE + 1];
-#endif /* ULOG_USING_ISR_LOG */
-
-#ifdef ULOG_USING_ASYNC_OUTPUT
-    rt_rbb_t async_rbb;
-    rt_thread_t async_th;
-    struct rt_semaphore async_notice;
-#endif
+    /* ringblk */
+    rt_uint8_t log_rbb_buf[ULOG_RBB_BUFSZ];
+    struct rt_rbb_blk log_rbb_blk[ULOG_RBB_BLKNUM];
+    struct rt_rbb log_rbb;
 
 #ifdef ULOG_USING_FILTER
     struct
     {
         /* all tag's level filter */
-        rt_slist_t tag_lvl_list;
+        struct ulog_tag_lvl_filter tag_lvls[ULOG_FILTER_NUM];
         /* global filter level, tag and keyword */
         rt_uint32_t level;
         char tag[ULOG_FILTER_TAG_MAX_LEN + 1];
@@ -182,52 +168,11 @@ size_t ulog_ultoa(char *s, unsigned long int n)
     return len;
 }
 
-static void output_unlock(void)
+static rt_rbb_blk_t get_log_blk(void)
 {
-    /* is in thread context */
-    if (rt_interrupt_get_nest() == 0)
-    {
-        rt_mutex_release(&ulog.output_locker);
-    }
-    else
-    {
-#ifdef ULOG_USING_ISR_LOG
-        rt_hw_interrupt_enable(ulog.output_locker_isr_lvl);
-#endif
-    }
-}
-
-static void output_lock(void)
-{
-    /* is in thread context */
-    if (rt_interrupt_get_nest() == 0)
-    {
-        rt_mutex_take(&ulog.output_locker, RT_WAITING_FOREVER);
-    }
-    else
-    {
-#ifdef ULOG_USING_ISR_LOG
-        ulog.output_locker_isr_lvl = rt_hw_interrupt_disable();
-#endif
-    }
-}
-
-static char *get_log_buf(void)
-{
-    /* is in thread context */
-    if (rt_interrupt_get_nest() == 0)
-    {
-        return ulog.log_buf_th;
-    }
-    else
-    {
-#ifdef ULOG_USING_ISR_LOG
-        return ulog.log_buf_isr;
-#else
-        rt_kprintf("Error: Current mode not supported run in ISR. Please enable ULOG_USING_ISR_LOG.\n");
-        return NULL;
-#endif
-    }
+    rt_rbb_blk_t block = rt_rbb_blk_alloc(&ulog.log_rbb, ULOG_LINE_BUF_SIZE + 1);
+    
+    return block;
 }
 
 RT_WEAK rt_size_t ulog_formater(char *log_buf, rt_uint32_t level, const char *tag, rt_bool_t newline,
@@ -382,7 +327,7 @@ RT_WEAK rt_size_t ulog_formater(char *log_buf, rt_uint32_t level, const char *ta
     return log_len;
 }
 
-void ulog_output_to_all_backend(rt_uint32_t level, const char *tag, rt_bool_t is_raw, const char *log, rt_size_t size)
+static void ulog_output_to_all_backend(rt_uint32_t level, const char *tag, rt_bool_t is_raw, char *log, rt_size_t size)
 {
     rt_slist_t *node;
     ulog_backend_t backend;
@@ -418,42 +363,8 @@ void ulog_output_to_all_backend(rt_uint32_t level, const char *tag, rt_bool_t is
     }
 }
 
-static void do_output(rt_uint32_t level, const char *tag, rt_bool_t is_raw, const char *log_buf, rt_size_t log_len)
+static void do_output(rt_uint32_t level, const char *tag, rt_bool_t is_raw, char *log_buf, rt_size_t log_len)
 {
-#ifdef ULOG_USING_ASYNC_OUTPUT
-    rt_rbb_blk_t log_blk;
-    ulog_frame_t log_frame;
-
-    /* allocate log frame */
-    log_blk = rt_rbb_blk_alloc(ulog.async_rbb, RT_ALIGN(sizeof(struct ulog_frame) + log_len, RT_ALIGN_SIZE));
-    if (log_blk)
-    {
-        /* package the log frame */
-        log_frame = (ulog_frame_t) log_blk->buf;
-        log_frame->magic = ULOG_FRAME_MAGIC;
-        log_frame->is_raw = is_raw;
-        log_frame->level = level;
-        log_frame->log_len = log_len;
-        log_frame->tag = tag;
-        log_frame->log = (const char *)log_blk->buf + sizeof(struct ulog_frame);
-        /* copy log data */
-        rt_memcpy(log_blk->buf + sizeof(struct ulog_frame), log_buf, log_len);
-        /* put the block */
-        rt_rbb_blk_put(log_blk);
-        /* send a notice */
-        rt_sem_release(&ulog.async_notice);
-    }
-    else
-    {
-        static rt_bool_t already_output = RT_FALSE;
-        if (already_output == RT_FALSE)
-        {
-            rt_kprintf("Warning: There is no enough buffer for saving async log,"
-                    " please increase the ULOG_ASYNC_OUTPUT_BUF_SIZE option.\n");
-            already_output = RT_TRUE;
-        }
-    }
-#else
     /* is in thread context */
     if (rt_interrupt_get_nest() == 0)
     {
@@ -466,11 +377,10 @@ static void do_output(rt_uint32_t level, const char *tag, rt_bool_t is_raw, cons
         /* We can't ensure that all backends support ISR context output.
          * So only using rt_kprintf when context is ISR */
         extern void ulog_console_backend_output(struct ulog_backend *backend, rt_uint32_t level, const char *tag,
-                rt_bool_t is_raw, const char *log, size_t len);
+                                                rt_bool_t is_raw, char *log, size_t len);
         ulog_console_backend_output(NULL, level, tag, is_raw, log_buf, log_len);
 #endif /* ULOG_BACKEND_USING_CONSOLE */
     }
-#endif /* ULOG_USING_ASYNC_OUTPUT */
 }
 
 /**
@@ -522,11 +432,12 @@ void ulog_voutput(rt_uint32_t level, const char *tag, rt_bool_t newline, const c
     }
 #endif /* ULOG_USING_FILTER */
 
-    /* get log buffer */
-    log_buf = get_log_buf();
+    rt_rbb_blk_t block = get_log_blk();
+    if(block == RT_NULL)
+        return;
 
-    /* lock output */
-    output_lock();
+    /* get log buffer */
+    log_buf = (char *)block->buf;
 
 #ifndef ULOG_USING_SYSLOG
     log_len = ulog_formater(log_buf, level, tag, newline, format, args);
@@ -544,8 +455,7 @@ void ulog_voutput(rt_uint32_t level, const char *tag, rt_bool_t newline, const c
         /* find the keyword */
         if (!rt_strstr(log_buf, ulog.filter.keyword))
         {
-            /* unlock output */
-            output_unlock();
+            rt_rbb_blk_free(&ulog.log_rbb, block);
             return;
         }
     }
@@ -553,8 +463,7 @@ void ulog_voutput(rt_uint32_t level, const char *tag, rt_bool_t newline, const c
     /* do log output */
     do_output(level, tag, RT_FALSE, log_buf, log_len);
 
-    /* unlock output */
-    output_unlock();
+    rt_rbb_blk_free(&ulog.log_rbb, block);
 }
 
 /**
@@ -591,13 +500,18 @@ void ulog_raw(const char *format, ...)
     va_list args;
     int fmt_result;
 
-    RT_ASSERT(ulog.init_ok);
+    if (!ulog.init_ok)
+    {
+        return;
+    }
+
+    rt_rbb_blk_t block = get_log_blk();
+    if(block == RT_NULL)
+        return;
 
     /* get log buffer */
-    log_buf = get_log_buf();
+    log_buf = (char *)block->buf;
 
-    /* lock output */
-    output_lock();
     /* args point to the first variable parameter */
     va_start(args, format);
 
@@ -622,8 +536,7 @@ void ulog_raw(const char *format, ...)
     /* do log output */
     do_output(LOG_LVL_DBG, NULL, RT_TRUE, log_buf, log_len);
 
-    /* unlock output */
-    output_unlock();
+    rt_rbb_blk_free(&ulog.log_rbb, block);
 }
 
 /**
@@ -643,7 +556,10 @@ void ulog_hexdump(const char *tag, rt_size_t width, rt_uint8_t *buf, rt_size_t s
     char *log_buf = NULL, dump_string[8];
     int fmt_result;
 
-    RT_ASSERT(ulog.init_ok);
+    if (!ulog.init_ok)
+    {
+        return;
+    }
 
 #ifdef ULOG_USING_FILTER
     /* level filter */
@@ -665,11 +581,12 @@ void ulog_hexdump(const char *tag, rt_size_t width, rt_uint8_t *buf, rt_size_t s
     }
 #endif /* ULOG_USING_FILTER */
 
-    /* get log buffer */
-    log_buf = get_log_buf();
+    rt_rbb_blk_t block = get_log_blk();
+    if(block == RT_NULL)
+        return;
 
-    /* lock output */
-    output_lock();
+    /* get log buffer */
+    log_buf = (char *)block->buf;
 
     for (i = 0, log_len = 0; i < size; i += width)
     {
@@ -734,8 +651,8 @@ void ulog_hexdump(const char *tag, rt_size_t width, rt_uint8_t *buf, rt_size_t s
         /* do log output */
         do_output(LOG_LVL_DBG, NULL, RT_TRUE, log_buf, log_len);
     }
-    /* unlock output */
-    output_unlock();
+    
+    rt_rbb_blk_free(&ulog.log_rbb, block);
 }
 
 #ifdef ULOG_USING_FILTER
@@ -762,8 +679,9 @@ void ulog_hexdump(const char *tag, rt_size_t width, rt_uint8_t *buf, rt_size_t s
  */
 int ulog_tag_lvl_filter_set(const char *tag, rt_uint32_t level)
 {
-    rt_slist_t *node;
+    int i;
     ulog_tag_lvl_filter_t tag_lvl = NULL;
+    
     int result = RT_EOK;
 
     if (level > LOG_FILTER_LVL_ALL)
@@ -772,29 +690,27 @@ int ulog_tag_lvl_filter_set(const char *tag, rt_uint32_t level)
     if (!ulog.init_ok)
         return result;
 
-    /* lock output */
-    output_lock();
-    /* find the tag in list */
-    for (node = rt_slist_first(ulog_tag_lvl_list_get()); node; node = rt_slist_next(node))
+    /* find the tag in filter array */
+    for (i = 0; i < ULOG_FILTER_NUM; i++)
     {
-        tag_lvl = rt_slist_entry(node, struct ulog_tag_lvl_filter, list);
-        if (!rt_strncmp(tag_lvl->tag, tag, ULOG_FILTER_TAG_MAX_LEN))
+        if(!ulog.filter.tag_lvls[i].used)
+            continue;
+        
+        if(!rt_strncmp(ulog.filter.tag_lvls[i].tag, tag, ULOG_FILTER_TAG_MAX_LEN))
         {
+            tag_lvl = &ulog.filter.tag_lvls[i];
             break;
         }
-        else
-        {
-            tag_lvl = NULL;
-        }
     }
+    
     /* find OK */
     if (tag_lvl)
     {
         if (level == LOG_FILTER_LVL_ALL)
         {
-            /* remove current tag's level filter when input level is the lowest level */
-            rt_slist_remove(ulog_tag_lvl_list_get(), &tag_lvl->list);
-            rt_free(tag_lvl);
+            tag_lvl->used = 0;
+            tag_lvl->level = LOG_FILTER_LVL_ALL;
+            rt_memset(tag_lvl->tag, 0, sizeof(tag_lvl->tag));
         }
         else
         {
@@ -807,14 +723,22 @@ int ulog_tag_lvl_filter_set(const char *tag, rt_uint32_t level)
         /* only add the new tag's level filer when level is not LOG_FILTER_LVL_ALL */
         if (level != LOG_FILTER_LVL_ALL)
         {
-            /* new a tag's level filter */
-            tag_lvl = (ulog_tag_lvl_filter_t)rt_malloc(sizeof(struct ulog_tag_lvl_filter));
+            /* find the empty in filter array */
+            for (i = 0; i < ULOG_FILTER_NUM; i++)
+            {
+                if(!ulog.filter.tag_lvls[i].used)
+                {
+                    tag_lvl = &ulog.filter.tag_lvls[i];
+                    break;
+                }
+            }
+
             if (tag_lvl)
             {
                 rt_memset(tag_lvl->tag, 0 , sizeof(tag_lvl->tag));
                 rt_strncpy(tag_lvl->tag, tag, ULOG_FILTER_TAG_MAX_LEN);
                 tag_lvl->level = level;
-                rt_slist_append(ulog_tag_lvl_list_get(), &tag_lvl->list);
+                tag_lvl->used = 1;
             }
             else
             {
@@ -822,8 +746,6 @@ int ulog_tag_lvl_filter_set(const char *tag, rt_uint32_t level)
             }
         }
     }
-    /* unlock output */
-    output_unlock();
 
     return result;
 }
@@ -838,39 +760,26 @@ int ulog_tag_lvl_filter_set(const char *tag, rt_uint32_t level)
  */
 rt_uint32_t ulog_tag_lvl_filter_get(const char *tag)
 {
-    rt_slist_t *node;
-    ulog_tag_lvl_filter_t tag_lvl = NULL;
+    int i;
     rt_uint32_t level = LOG_FILTER_LVL_ALL;
 
     if (!ulog.init_ok)
         return level;
 
-    /* lock output */
-    output_lock();
-    /* find the tag in list */
-    for (node = rt_slist_first(ulog_tag_lvl_list_get()); node; node = rt_slist_next(node))
+    /* find the tag in filter array */
+    for (i = 0; i < ULOG_FILTER_NUM; i++)
     {
-        tag_lvl = rt_slist_entry(node, struct ulog_tag_lvl_filter, list);
-        if (!rt_strncmp(tag_lvl->tag, tag, ULOG_FILTER_TAG_MAX_LEN))
+        if(!ulog.filter.tag_lvls[i].used)
+            continue;
+        
+        if(!rt_strncmp(ulog.filter.tag_lvls[i].tag, tag, ULOG_FILTER_TAG_MAX_LEN))
         {
-            level = tag_lvl->level;
+            level = ulog.filter.tag_lvls[i].level;
             break;
         }
     }
-    /* unlock output */
-    output_unlock();
 
     return level;
-}
-
-/**
- * get the tag's level list on filter
- *
- * @return tag's level list
- */
-rt_slist_t *ulog_tag_lvl_list_get(void)
-{
-    return &ulog.filter.tag_lvl_list;
 }
 
 /**
@@ -882,7 +791,8 @@ rt_slist_t *ulog_tag_lvl_list_get(void)
  */
 void ulog_global_filter_lvl_set(rt_uint32_t level)
 {
-    RT_ASSERT(level <= LOG_FILTER_LVL_ALL);
+    if(level > LOG_FILTER_LVL_ALL)
+        return;
 
     ulog.filter.level = level;
 }
@@ -906,7 +816,8 @@ rt_uint32_t ulog_global_filter_lvl_get(void)
  */
 void ulog_global_filter_tag_set(const char *tag)
 {
-    RT_ASSERT(tag);
+    if(tag == RT_NULL)
+        return;
 
     rt_strncpy(ulog.filter.tag, tag, ULOG_FILTER_TAG_MAX_LEN);
 }
@@ -928,7 +839,8 @@ const char *ulog_global_filter_tag_get(void)
  */
 void ulog_global_filter_kw_set(const char *keyword)
 {
-    RT_ASSERT(keyword);
+    if(keyword == RT_NULL)
+        return;
 
     rt_strncpy(ulog.filter.keyword, keyword, ULOG_FILTER_KW_MAX_LEN);
 }
@@ -1064,7 +976,7 @@ static void ulog_filter(uint8_t argc, char **argv)
     const char *lvl_name[] = { "Assert ", "Error  ", "Error  ", "Error  ", "Warning", "Info   ", "Info   ", "Debug  " };
 #endif
     const char *tag = ulog_global_filter_tag_get(), *kw = ulog_global_filter_kw_get();
-    rt_slist_t *node;
+    int i;
     ulog_tag_lvl_filter_t tag_lvl = NULL;
 
     rt_kprintf("--------------------------------------\n");
@@ -1081,29 +993,33 @@ static void ulog_filter(uint8_t argc, char **argv)
 
     rt_kprintf("--------------------------------------\n");
     rt_kprintf("ulog tag's level filter:\n");
-    if (rt_slist_isempty(ulog_tag_lvl_list_get()))
+
+    for (i = 0; i < ULOG_FILTER_NUM; i++)
+    {
+        if(ulog.filter.tag_lvls[i].used)
+            break;
+    }
+
+    if (i == ULOG_FILTER_NUM)
     {
         rt_kprintf("settings not found\n");
     }
     else
     {
-        /* lock output */
-        output_lock();
-        /* show the tag level list */
-        for (node = rt_slist_first(ulog_tag_lvl_list_get()); node; node = rt_slist_next(node))
+        /* show the tag level */
+        for (i = 0; i < ULOG_FILTER_NUM; i++)
         {
-            tag_lvl = rt_slist_entry(node, struct ulog_tag_lvl_filter, list);
+            if(!ulog.filter.tag_lvls[i].used)
+                continue;
+            
+            tag_lvl = &ulog.filter.tag_lvls[i];
             rt_kprintf("%-*.s: ", ULOG_FILTER_TAG_MAX_LEN, tag_lvl->tag);
-
 #ifndef ULOG_USING_SYSLOG
             rt_kprintf("%s\n", lvl_name[tag_lvl->level]);
 #else
             rt_kprintf("%d\n", tag_lvl->level);
 #endif
-
         }
-        /* unlock output */
-        output_unlock();
     }
 }
 MSH_CMD_EXPORT(ulog_filter, Show ulog filter settings);
@@ -1114,9 +1030,13 @@ rt_err_t ulog_backend_register(ulog_backend_t backend, const char *name, rt_bool
 {
     rt_base_t level;
 
+    if (!ulog.init_ok)
+    {
+        return -RT_ERROR;
+    }
+
     RT_ASSERT(backend);
     RT_ASSERT(name);
-    RT_ASSERT(ulog.init_ok);
     RT_ASSERT(backend->output);
 
     if (backend->init)
@@ -1125,7 +1045,8 @@ rt_err_t ulog_backend_register(ulog_backend_t backend, const char *name, rt_bool
     }
 
     backend->support_color = support_color;
-    rt_memcpy(backend->name, name, RT_NAME_MAX);
+    rt_strncpy(backend->name, name, RT_NAME_MAX);
+    rt_slist_init(&backend->list);
 
     level = rt_hw_interrupt_disable();
     rt_slist_append(&ulog.backend_list, &backend->list);
@@ -1133,72 +1054,6 @@ rt_err_t ulog_backend_register(ulog_backend_t backend, const char *name, rt_bool
 
     return RT_EOK;
 }
-
-rt_err_t ulog_backend_unregister(ulog_backend_t backend)
-{
-    rt_base_t level;
-
-    RT_ASSERT(backend);
-    RT_ASSERT(ulog.init_ok);
-
-    if (backend->deinit)
-    {
-        backend->deinit(backend);
-    }
-
-    level = rt_hw_interrupt_disable();
-    rt_slist_remove(&ulog.backend_list, &backend->list);
-    rt_hw_interrupt_enable(level);
-
-    return RT_EOK;
-}
-
-#ifdef ULOG_USING_ASYNC_OUTPUT
-/**
- * asynchronous output logs to all backends
- *
- * @note you must call this function when ULOG_ASYNC_OUTPUT_BY_THREAD is disable
- */
-void ulog_async_output(void)
-{
-    rt_rbb_blk_t log_blk;
-    ulog_frame_t log_frame;
-
-    while ((log_blk = rt_rbb_blk_get(ulog.async_rbb)) != NULL)
-    {
-        log_frame = (ulog_frame_t) log_blk->buf;
-        if (log_frame->magic == ULOG_FRAME_MAGIC)
-        {
-            /* output to all backends */
-            ulog_output_to_all_backend(log_frame->level, log_frame->tag, log_frame->is_raw, log_frame->log,
-                    log_frame->log_len);
-        }
-        rt_rbb_blk_free(ulog.async_rbb, log_blk);
-    }
-}
-
-/**
- * waiting for get asynchronous output log
- *
- * @param time the waiting time
- */
-void ulog_async_waiting_log(rt_int32_t time)
-{
-    rt_sem_control(&ulog.async_notice, RT_IPC_CMD_RESET, RT_NULL);
-    rt_sem_take(&ulog.async_notice, time);
-}
-
-static void async_output_thread_entry(void *param)
-{
-    ulog_async_output();
-
-    while (1)
-    {
-        ulog_async_waiting_log(RT_WAITING_FOREVER);
-        ulog_async_output();
-    }
-}
-#endif /* ULOG_USING_ASYNC_OUTPUT */
 
 /**
  * flush all backends's log
@@ -1210,10 +1065,6 @@ void ulog_flush(void)
 
     if (!ulog.init_ok)
         return;
-
-#ifdef ULOG_USING_ASYNC_OUTPUT
-    ulog_async_output();
-#endif
 
     /* flush all backends */
     for (node = rt_slist_first(&ulog.backend_list); node; node = rt_slist_next(node))
@@ -1230,40 +1081,11 @@ int ulog_init(void)
 {
     if (ulog.init_ok)
         return 0;
+    
+    rt_memset(&ulog, 0, sizeof(struct rt_ulog));
 
-    rt_mutex_init(&ulog.output_locker, "ulog lock", RT_IPC_FLAG_FIFO);
     rt_slist_init(&ulog.backend_list);
-
-#ifdef ULOG_USING_FILTER
-    rt_slist_init(ulog_tag_lvl_list_get());
-#endif
-
-#ifdef ULOG_USING_ASYNC_OUTPUT
-    RT_ASSERT(ULOG_ASYNC_OUTPUT_STORE_LINES >= 2);
-    /* async output ring block buffer */
-    ulog.async_rbb = rt_rbb_create(RT_ALIGN(ULOG_ASYNC_OUTPUT_BUF_SIZE, RT_ALIGN_SIZE), ULOG_ASYNC_OUTPUT_STORE_LINES);
-    if (ulog.async_rbb == NULL)
-    {
-        rt_kprintf("Error: ulog init failed! No memory for async rbb.\n");
-        rt_mutex_detach(&ulog.output_locker);
-        return -RT_ENOMEM;
-    }
-    /* async output thread */
-    ulog.async_th = rt_thread_create("ulog_async", async_output_thread_entry, &ulog, ULOG_ASYNC_OUTPUT_THREAD_STACK,
-            ULOG_ASYNC_OUTPUT_THREAD_PRIORITY, 20);
-    if (ulog.async_th == NULL)
-    {
-        rt_kprintf("Error: ulog init failed! No memory for async output thread.\n");
-        rt_mutex_detach(&ulog.output_locker);
-        rt_rbb_destroy(ulog.async_rbb);
-        return -RT_ENOMEM;
-    }
-
-    rt_sem_init(&ulog.async_notice, "ulog", 0, RT_IPC_FLAG_FIFO);
-    /* async output thread startup */
-    rt_thread_startup(ulog.async_th);
-
-#endif /* ULOG_USING_ASYNC_OUTPUT */
+    rt_rbb_init(&ulog.log_rbb, ulog.log_rbb_buf, ULOG_RBB_BUFSZ, ulog.log_rbb_blk, ULOG_RBB_BLKNUM);
 
 #ifdef ULOG_USING_FILTER
     ulog_global_filter_lvl_set(LOG_FILTER_LVL_ALL);
@@ -1274,45 +1096,5 @@ int ulog_init(void)
     return 0;
 }
 INIT_PREV_EXPORT(ulog_init);
-
-void ulog_deinit(void)
-{
-    rt_slist_t *node;
-    ulog_backend_t backend;
-
-    if (!ulog.init_ok)
-        return;
-
-    /* deinit all backends */
-    for (node = rt_slist_first(&ulog.backend_list); node; node = rt_slist_next(node))
-    {
-        backend = rt_slist_entry(node, struct ulog_backend, list);
-        if (backend->deinit)
-        {
-            backend->deinit(backend);
-        }
-    }
-
-#ifdef ULOG_USING_FILTER
-    /* deinit tag's level filter */
-    {
-        ulog_tag_lvl_filter_t tag_lvl;
-        for (node = rt_slist_first(ulog_tag_lvl_list_get()); node; node = rt_slist_next(node))
-        {
-            tag_lvl = rt_slist_entry(node, struct ulog_tag_lvl_filter, list);
-            rt_free(tag_lvl);
-        }
-    }
-#endif /* ULOG_USING_FILTER */
-
-    rt_mutex_detach(&ulog.output_locker);
-
-#ifdef ULOG_USING_ASYNC_OUTPUT
-    rt_rbb_destroy(ulog.async_rbb);
-    rt_thread_delete(ulog.async_th);
-#endif
-
-    ulog.init_ok = RT_FALSE;
-}
 
 #endif /* RT_USING_ULOG */

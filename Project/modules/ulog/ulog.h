@@ -24,7 +24,6 @@ extern "C" {
  * ulog init and deint
  */
 int ulog_init(void);
-void ulog_deinit(void);
 
 /*
  * output different level log by LOG_X API
@@ -51,7 +50,6 @@ void ulog_deinit(void);
  * backend register and unregister
  */
 rt_err_t ulog_backend_register(ulog_backend_t backend, const char *name, rt_bool_t support_color);
-rt_err_t ulog_backend_unregister(ulog_backend_t backend);
 
 #ifdef ULOG_USING_FILTER
 /*
@@ -59,7 +57,6 @@ rt_err_t ulog_backend_unregister(ulog_backend_t backend);
  */
 int ulog_tag_lvl_filter_set(const char *tag, rt_uint32_t level);
 rt_uint32_t ulog_tag_lvl_filter_get(const char *tag);
-rt_slist_t *ulog_tag_lvl_list_get(void);
 void ulog_global_filter_lvl_set(rt_uint32_t level);
 rt_uint32_t ulog_global_filter_lvl_get(void);
 void ulog_global_filter_tag_set(const char *tag);
@@ -72,14 +69,6 @@ const char *ulog_global_filter_kw_get(void);
  * flush all backends's log
  */
 void ulog_flush(void);
-
-#ifdef ULOG_USING_ASYNC_OUTPUT
-/*
- * asynchronous output API
- */
-void ulog_async_output(void);
-void ulog_async_waiting_log(rt_int32_t time);
-#endif
 
 /*
  * dump the hex format data to log

@@ -18,10 +18,10 @@
 #error "The thread stack size must more than 384 when using async output by thread (ULOG_ASYNC_OUTPUT_BY_THREAD)"
 #endif
 
-static struct ulog_backend console;
+static struct ulog_backend console = {0};
 
 void ulog_console_backend_output(struct ulog_backend *backend, rt_uint32_t level, const char *tag, rt_bool_t is_raw,
-        const char *log, size_t len)
+                                 char *log, size_t len)
 {
 #ifdef RT_USING_DEVICE
     rt_device_t dev = rt_console_get_device();
@@ -39,20 +39,22 @@ void ulog_console_backend_output(struct ulog_backend *backend, rt_uint32_t level
         dev->open_flag = old_flag;
     }
 #else
-    rt_kprintf("%.*s", len, log);
+    if(len > ULOG_LINE_BUF_SIZE)
+        len = ULOG_LINE_BUF_SIZE;
+    log[len] = '\0';
+    rt_hw_console_output(log);
 #endif
 
 }
 
 int ulog_console_backend_init(void)
 {
-    ulog_init();
     console.output = ulog_console_backend_output;
 
     ulog_backend_register(&console, "console", RT_TRUE);
 
     return 0;
 }
-INIT_PREV_EXPORT(ulog_console_backend_init);
+INIT_DEVICE_EXPORT(ulog_console_backend_init);
 
 #endif /* ULOG_BACKEND_USING_CONSOLE */
