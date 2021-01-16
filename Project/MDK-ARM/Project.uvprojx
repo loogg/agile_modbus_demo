@@ -619,14 +619,14 @@
               <FilePath>..\modules\ulog\ulog.c</FilePath>
             </File>
             <File>
-              <FileName>syslog.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\modules\ulog\syslog\syslog.c</FilePath>
-            </File>
-            <File>
               <FileName>console_be.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\modules\ulog\backend\console_be.c</FilePath>
+            </File>
+            <File>
+              <FileName>syslog.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\modules\ulog\syslog\syslog.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -28,7 +28,7 @@
 
 #ifdef ULOG_USING_SYSLOG
 
-#include <sys/time.h>
+#include <time.h>
 
 #ifndef ULOG_SYSLOG_IDENT_MAX_LEN
 #define ULOG_SYSLOG_IDENT_MAX_LEN      ULOG_FILTER_TAG_MAX_LEN
@@ -49,8 +49,6 @@ static rt_bool_t is_open = RT_FALSE;
 void openlog(const char *ident, int option, int facility)
 {
     rt_base_t level;
-
-    ulog_init();
 
     level = rt_hw_interrupt_disable();
 
@@ -129,8 +127,6 @@ void syslog(int priority, const char *format, ...)
  */
 void closelog(void)
 {
-    ulog_deinit();
-
     is_open = RT_FALSE;
 }
 
@@ -188,16 +184,16 @@ RT_WEAK rt_size_t syslog_formater(char *log_buf, int level, const char *tag, rt_
     /* add time and priority (level) info */
     {
         time_t now = time(RT_NULL);
-        struct tm *tm, tm_tmp;
+        struct tm tm_info;
 
-        tm = gmtime_r(&now, &tm_tmp);
+        localtime_r(&now, &tm_info);
 
 #ifdef ULOG_OUTPUT_LEVEL
         rt_snprintf(log_buf + log_len, ULOG_LINE_BUF_SIZE - log_len, "<%d>%s%3d %02d:%02d:%02d", level,
-                get_month_str(tm->tm_mon + 1), tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
+                    get_month_str(tm_info.tm_mon + 1), tm_info.tm_mday, tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec);
 #else
         rt_snprintf(log_buf + log_len, ULOG_LINE_BUF_SIZE - log_len, "%s%3d %02d:%02d:%02d",
-                get_month_str(tm->tm_mon + 1), tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
+                    get_month_str(tm_info.tm_mon + 1), tm_info.tm_mday, tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec);
 #endif /* ULOG_OUTPUT_LEVEL */
 
         log_len += rt_strlen(log_buf + log_len);
@@ -218,7 +214,10 @@ RT_WEAK rt_size_t syslog_formater(char *log_buf, int level, const char *tag, rt_
         /* is not in interrupt context */
         if (rt_interrupt_get_nest() == 0)
         {
-            log_len += ulog_strcpy(log_len, log_buf + log_len, rt_thread_self()->name);
+            rt_size_t name_len = rt_strnlen(rt_thread_self()->name, RT_NAME_MAX);
+
+            rt_strncpy(log_buf + log_len, rt_thread_self()->name, name_len);
+            log_len += name_len;
         }
         else
         {

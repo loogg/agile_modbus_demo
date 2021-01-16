@@ -1,6 +1,7 @@
 #include <rtthread.h>
 #include "main_hook.h"
 #include <stdlib.h>
+#include <time.h>
 
 #define DBG_ENABLE
 #define DBG_COLOR
@@ -9,6 +10,16 @@
 #include <rtdbg.h>
 
 static rt_uint32_t run_time = 0;
+
+time_t time(time_t *t)
+{
+    if (t != RT_NULL)
+    {
+        *t = run_time;
+    }
+
+    return run_time;
+}
 
 static void calc_runtime(void)
 {

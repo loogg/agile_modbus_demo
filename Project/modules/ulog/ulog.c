@@ -23,7 +23,7 @@
 #endif
 
 #ifdef ULOG_TIME_USING_TIMESTAMP
-#include <sys/time.h>
+#include <time.h>
 #endif
 
 #ifdef RT_USING_ULOG
@@ -178,9 +178,8 @@ static rt_rbb_blk_t get_log_blk(void)
 RT_WEAK rt_size_t ulog_formater(char *log_buf, rt_uint32_t level, const char *tag, rt_bool_t newline,
         const char *format, va_list args)
 {
-    /* the caller has locker, so it can use static variable for reduce stack usage */
-    static rt_size_t log_len, newline_len;
-    static int fmt_result;
+    rt_size_t log_len, newline_len;
+    int fmt_result;
 
     RT_ASSERT(log_buf);
     RT_ASSERT(level <= LOG_LVL_DBG);
@@ -203,22 +202,16 @@ RT_WEAK rt_size_t ulog_formater(char *log_buf, rt_uint32_t level, const char *ta
     /* add time info */
     {
 #ifdef ULOG_TIME_USING_TIMESTAMP
-        static time_t now;
-        static struct tm *tm, tm_tmp;
+        time_t now;
+        struct tm tm_info;
 
         now = time(NULL);
-        tm = gmtime_r(&now, &tm_tmp);
+        localtime_r(&now, &tm_info);
 
-#ifdef RT_USING_SOFT_RTC
-        rt_snprintf(log_buf + log_len, ULOG_LINE_BUF_SIZE - log_len, "%02d-%02d %02d:%02d:%02d.%03d", tm->tm_mon + 1,
-                tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec, rt_tick_get() % 1000);
+        rt_snprintf(log_buf + log_len, ULOG_LINE_BUF_SIZE - log_len, "%02d-%02d %02d:%02d:%02d", tm_info.tm_mon + 1,
+                    tm_info.tm_mday, tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec);
 #else
-        rt_snprintf(log_buf + log_len, ULOG_LINE_BUF_SIZE - log_len, "%02d-%02d %02d:%02d:%02d", tm->tm_mon + 1,
-                tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec);
-#endif /* RT_USING_SOFT_RTC */
-
-#else
-        static rt_size_t tick_len = 0;
+        rt_size_t tick_len = 0;
 
         log_buf[log_len] = '[';
         tick_len = ulog_ultoa(log_buf + log_len + 1, rt_tick_get());
