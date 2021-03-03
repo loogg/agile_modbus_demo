@@ -200,7 +200,7 @@
 #ifdef RT_USING_ULOG
 // <c1>Enable syslog format log and API.
 //  <i>Enable syslog format log and API.
-#define ULOG_USING_SYSLOG
+//#define ULOG_USING_SYSLOG
 // </c>
 // <o>Normal mode static output log level
 //  <i>Default: Debug
@@ -245,7 +245,7 @@
 // </c>
 // <c1>Enable color log.
 //  <i>Enable color log.
-//#define ULOG_USING_COLOR
+#define ULOG_USING_COLOR
 // </c>
 // <c1>Enable time information.
 //  <i>Enable time information.
@@ -253,7 +253,7 @@
 // </c>
 // <c1>Enable timestamp format for time. Depends on ULOG_OUTPUT_TIME
 //  <i>Enable timestamp format for time. Depends on ULOG_OUTPUT_TIME
-#define ULOG_TIME_USING_TIMESTAMP
+//#define ULOG_TIME_USING_TIMESTAMP
 // </c>
 // <c1>Enable level information.
 //  <i>Enable level information.

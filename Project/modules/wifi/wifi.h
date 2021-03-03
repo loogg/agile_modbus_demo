@@ -3,6 +3,7 @@
 #include <rtthread.h>
 #include "ringblk_buf.h"
 #include "usr_device.h"
+#include "at.h"
 
 #define WIFI_SERVER_MAX_CONN            5
 #define WIFI_CLIENT_RBB_BUFSZ           512
@@ -41,6 +42,7 @@ struct usr_device_wifi
     struct usr_device parent;
 
     rt_uint8_t init_ok;
+    at_client_t client;
     rt_uint8_t smart_flag;
     struct rt_event evt;
     wifi_state_t wifi_state;

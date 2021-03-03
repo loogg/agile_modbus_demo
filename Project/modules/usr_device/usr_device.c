@@ -115,3 +115,18 @@ rt_err_t usr_device_set_tx_complete(usr_device_t dev, rt_err_t (*tx_complete)(us
 
     return RT_EOK;
 }
+
+static int list_usr_device(void)
+{
+    rt_kprintf("-------------------------\r\n");
+
+    rt_slist_t *node;
+    rt_slist_for_each(node, &usr_device_header)
+    {
+        usr_device_t dev = rt_slist_entry(node, struct usr_device, slist);
+        rt_kprintf("device: %-*.*s\r\n", RT_NAME_MAX, RT_NAME_MAX, dev->name);
+    }
+
+    return RT_EOK;
+}
+MSH_CMD_EXPORT(list_usr_device, list usr device);

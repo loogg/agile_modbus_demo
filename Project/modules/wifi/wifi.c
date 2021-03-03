@@ -2,7 +2,6 @@
 #include "drv_gpio.h"
 #include "drv_usart.h"
 #include "init_module.h"
-#include "at.h"
 #include <string.h>
 #include <stdio.h>
 #include <rthw.h>
@@ -1002,14 +1001,14 @@ static int wifi_init(void)
     usr_device_init(dev);
 
     at_resp_init(&at_resp, (char *)at_resp_buf, sizeof(at_resp_buf), 0, rt_tick_from_millisecond(300));
-    at_client_t client = at_client_init(dev, (char *)at_recv_line_buf, sizeof(at_recv_line_buf));
-    RT_ASSERT(client);
+    wifi_device.client = at_client_init(dev, (char *)at_recv_line_buf, sizeof(at_recv_line_buf));
+    RT_ASSERT(wifi_device.client);
     /* register URC data execution function  */
     at_set_urc_table(urc_table, sizeof(urc_table) / sizeof(urc_table[0]));
     rt_thread_init(&at_parser,
                    "wifi_clnt",
                    (void (*)(void *parameter))client_parser,
-                   client,
+                   wifi_device.client,
                    &at_parser_stack[0],
                    sizeof(at_parser_stack),
                    1,

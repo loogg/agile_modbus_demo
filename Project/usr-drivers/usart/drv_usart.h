@@ -5,9 +5,7 @@
 #include "stm32f1xx_hal.h"
 #include "usr_device.h"
 
-#define USR_DEVICE_USART_RX_TIMEOUT             60
-#define USR_DEVICE_USART_TX_ACTIVATED_TIMEOUT   10
-#define USR_DEVICE_USART_MAX_ERROR_CNT          3
+#define USR_DEVICE_USART_TX_ACTIVATED_TIMEOUT   15
 
 #define USR_DEVICE_USART_PARAMETER_DEFAULT  \
     {                                       \
@@ -20,7 +18,6 @@
 #define USR_DEVICE_USART_CMD_SET_PARAMETER      0x01
 #define USR_DEVICE_USART_CMD_SET_BUFFER         0x02
 #define USR_DEVICE_USART_CMD_FLUSH              0X03
-#define USR_DEVICE_USART_CMD_STOP               0x04
 
 struct usr_device_usart_config
 {
@@ -52,15 +49,14 @@ struct usr_device_usart
 {
     struct usr_device parent;
     rt_uint8_t init_ok;
-    rt_uint8_t error_cnt;
-    rt_uint8_t reset_flag;
+    rt_uint8_t error;
     rt_uint8_t ignore_data;
     struct usr_device_usart_buffer buffer;
     struct rt_ringbuffer tx_rb;
+    rt_uint16_t need_send;
     struct rt_ringbuffer rx_rb;
     rt_uint8_t tx_activated;
     rt_tick_t tx_activated_timeout;
-    rt_tick_t rx_timeout;
     struct usr_device_usart_parameter parameter;
     const struct usr_device_usart_config *config;
     rt_slist_t slist;

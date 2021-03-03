@@ -52,13 +52,12 @@ static rt_err_t _usart_init(usr_device_t dev)
     if(usart->init_ok)
         HAL_UART_DeInit(usart->config->handle);
     
-    usart->error_cnt = 0;
-    usart->reset_flag = 0;
+    usart->error = 0;
     rt_ringbuffer_init(&(usart->tx_rb), usart->buffer.send_buf, usart->buffer.send_bufsz);
+    usart->need_send = 0;
     rt_ringbuffer_init(&(usart->rx_rb), usart->buffer.read_buf, usart->buffer.read_bufsz);
     usart->tx_activated = RT_FALSE;
     usart->tx_activated_timeout = rt_tick_get();
-    usart->rx_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DEVICE_USART_RX_TIMEOUT * 1000);
     DRV_USART_RS485_INIT();
     DRV_USART_RS485_RECV();
 
@@ -88,22 +87,15 @@ static rt_size_t _usart_read(usr_device_t dev, rt_off_t pos, void *buffer, rt_si
 
     if(!usart->init_ok)
         return 0;
-    if(size <= 0)
-        return size;
-    
-    if(size > RT_UINT16_MAX)
-        size = RT_UINT16_MAX;
+    if(size == 0)
+        return 0;
+    if(usart->error)
+        return 0;
     
     rt_size_t len = 0;
 
     rt_base_t level = rt_hw_interrupt_disable();
-    do
-    {
-        if(usart->reset_flag)
-            break;
-        
-        len = rt_ringbuffer_get(&(usart->rx_rb), buffer, size);
-    }while(0);
+    len = rt_ringbuffer_get(&(usart->rx_rb), buffer, size);
     rt_hw_interrupt_enable(level);
 
     return len;
@@ -116,33 +108,60 @@ static rt_size_t _usart_write(usr_device_t dev, rt_off_t pos, const void *buffer
 
     if(!usart->init_ok)
         return 0;
-    if(size <= 0)
-        return size;
-    
-    int put_len = 0;
+    if(size == 0)
+        return 0;
+    if(usart->error)
+        return 0;
 
     rt_base_t level = rt_hw_interrupt_disable();
-    do
+    if (usart->tx_activated == RT_TRUE)
     {
-        if(usart->error_cnt >= USR_DEVICE_USART_MAX_ERROR_CNT)
-            break;
-
-        put_len = rt_ringbuffer_put(&(usart->tx_rb), buffer, size);
-
-        if(usart->tx_activated == RT_TRUE)
-            break;
-        
-        rt_uint8_t *send_ptr = RT_NULL;
-        int send_len = rt_ringbuffer_peak(&(usart->tx_rb), &send_ptr);
-        if(send_len <= 0)
-            break;
-        
-        DRV_USART_RS485_SEND();
+        if ((rt_tick_get() - usart->tx_activated_timeout) < (RT_TICK_MAX / 2))
+        {
+            usart->error = 1;
+            rt_hw_interrupt_enable(level);
+            return 0;
+        }
+    }
+    rt_uint16_t write_index = usart->tx_rb.write_index;
+    rt_uint8_t tx_activated = usart->tx_activated;
+    rt_size_t put_len = rt_ringbuffer_put_update(&(usart->tx_rb), size);
+    if ((put_len > 0) && (usart->tx_activated != RT_TRUE))
+    {
         usart->tx_activated = RT_TRUE;
-        HAL_UART_AbortTransmit(usart->config->handle);
-        HAL_UART_Transmit_DMA(usart->config->handle, send_ptr, send_len);
         usart->tx_activated_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DEVICE_USART_TX_ACTIVATED_TIMEOUT * 1000);
-    }while(0);
+    }
+    rt_hw_interrupt_enable(level);
+
+    if(put_len == 0)
+        return 0;
+    
+    rt_ringbuffer_put_raw(&(usart->tx_rb), write_index, buffer, put_len);
+    
+    level = rt_hw_interrupt_disable();
+    if(usart->tx_activated != RT_TRUE)
+    {
+        rt_hw_interrupt_enable(level);
+        return 0;
+    }
+    usart->need_send += put_len;
+    if(tx_activated == RT_TRUE)
+    {
+        rt_hw_interrupt_enable(level);
+        return put_len;
+    }
+    rt_uint8_t *send_ptr = RT_NULL;
+    rt_size_t send_len = rt_ringbuffer_peak(&(usart->tx_rb), &send_ptr, usart->need_send);
+    if(send_len == 0)
+    {
+        usart->error = 1;
+        rt_hw_interrupt_enable(level);
+        return 0;
+    }
+    usart->need_send -= send_len;
+    DRV_USART_RS485_SEND();
+    HAL_UART_AbortTransmit(usart->config->handle);
+    HAL_UART_Transmit_DMA(usart->config->handle, send_ptr, send_len);
     rt_hw_interrupt_enable(level);
 
     return put_len;
@@ -173,12 +192,9 @@ static rt_err_t _usart_control(usr_device_t dev, int cmd, void *args)
                 break;
             
             rt_base_t level = rt_hw_interrupt_disable();
-            if(usart->init_ok)
-                HAL_UART_Abort(usart->config->handle);
             usart->parameter = *parameter;
-            usart->tx_activated = RT_FALSE;
-            usart->error_cnt = USR_DEVICE_USART_MAX_ERROR_CNT;
-            usart->reset_flag = 1;
+            if(usart->init_ok)
+                _usart_init(dev);
             rt_hw_interrupt_enable(level);
 
             result = RT_EOK;
@@ -201,12 +217,9 @@ static rt_err_t _usart_control(usr_device_t dev, int cmd, void *args)
                 break;
             
             rt_base_t level = rt_hw_interrupt_disable();
-            if(usart->init_ok)
-                HAL_UART_Abort(usart->config->handle);
             usart->buffer = *buffer;
-            usart->tx_activated = RT_FALSE;
-            usart->error_cnt = USR_DEVICE_USART_MAX_ERROR_CNT;
-            usart->reset_flag = 1;
+            if(usart->init_ok)
+                _usart_init(dev);
             rt_hw_interrupt_enable(level);
 
             result = RT_EOK;
@@ -229,17 +242,6 @@ static rt_err_t _usart_control(usr_device_t dev, int cmd, void *args)
             usart->tx_activated_timeout = rt_tick_get();
             DRV_USART_RS485_RECV();
             HAL_UART_Receive_IT(usart->config->handle, &(usart->ignore_data), 1);
-            rt_hw_interrupt_enable(level);
-
-            result = RT_EOK;
-        }
-        break;
-
-        case USR_DEVICE_USART_CMD_STOP:
-        {
-            rt_base_t level = rt_hw_interrupt_disable();
-            if(usart->init_ok)
-                HAL_UART_Abort(usart->config->handle);
             rt_hw_interrupt_enable(level);
 
             result = RT_EOK;
@@ -277,12 +279,19 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     {
         if(usart->tx_activated != RT_TRUE)
             break;
-        
-        rt_uint8_t *send_ptr = RT_NULL;
-        int send_len = rt_ringbuffer_peak(&(usart->tx_rb), &send_ptr);
-        if(send_len <= 0)
+        if(usart->need_send == 0)
+            break;
+        if(usart->error)
             break;
         
+        rt_uint8_t *send_ptr = RT_NULL;
+        rt_size_t send_len = rt_ringbuffer_peak(&(usart->tx_rb), &send_ptr, usart->need_send);
+        if(send_len == 0)
+        {
+            usart->error = 1;
+            break;
+        }
+        usart->need_send -= send_len;
         HAL_UART_AbortTransmit(usart->config->handle);
         HAL_UART_Transmit_DMA(usart->config->handle, send_ptr, send_len);
 
@@ -309,9 +318,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     struct usr_device_usart *usart = get_drv_by_handle(huart);
     if(usart == RT_NULL)
         return;
+    if(usart->error)
+        return;
     
     rt_ringbuffer_putchar(&(usart->rx_rb), usart->ignore_data);
-    usart->rx_timeout = rt_tick_get() + rt_tick_from_millisecond(USR_DEVICE_USART_RX_TIMEOUT * 1000);
 
     HAL_UART_Receive_IT(usart->config->handle, &(usart->ignore_data), 1);
     
@@ -325,7 +335,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     if(usart == RT_NULL)
         return;
     
-    usart->reset_flag = 1;
+    usart->error = 1;
 }
 
 void DMA1_Channel4_IRQHandler(void)
@@ -417,67 +427,3 @@ static int drv_hw_usart_init(void)
     return RT_EOK;
 }
 INIT_BOARD_EXPORT(drv_hw_usart_init);
-
-
-#include "main_hook.h"
-
-static void drv_usart_monitor(void)
-{
-    rt_slist_t *node;
-    rt_slist_for_each(node, &drv_usart_header)
-    {
-        struct usr_device_usart *usart = rt_slist_entry(node, struct usr_device_usart, slist);
-        if(!usart->init_ok)
-            continue;
-        
-        rt_base_t level;
-
-        level = rt_hw_interrupt_disable();
-        do
-        {
-            if(usart->tx_activated != RT_TRUE)
-                break;
-            
-            if ((rt_tick_get() - usart->tx_activated_timeout) < (RT_TICK_MAX / 2))
-            {
-                usart->error_cnt++;
-                HAL_UART_AbortTransmit(usart->config->handle);
-                rt_ringbuffer_reset(&(usart->tx_rb));
-                usart->tx_activated = RT_FALSE;
-                usart->tx_activated_timeout = rt_tick_get();
-                DRV_USART_RS485_RECV();
-            }
-        }while(0);
-
-        if(usart->error_cnt >= USR_DEVICE_USART_MAX_ERROR_CNT)
-            usart->reset_flag = 1;
-
-        if ((rt_tick_get() - usart->rx_timeout) < (RT_TICK_MAX / 2))
-            usart->reset_flag = 1;
-        rt_hw_interrupt_enable(level);
-
-        if(usart->reset_flag)
-        {
-            level = rt_hw_interrupt_disable();
-            do
-            {
-                if(usart->tx_activated == RT_TRUE)
-                    break;
-                
-                _usart_init(&(usart->parent));
-            }while(0);
-            rt_hw_interrupt_enable(level);
-        }
-    }
-}
-
-static struct main_hook_module _hook_module;
-
-static int drv_usart_monitor_init(void)
-{
-    _hook_module.hook = drv_usart_monitor;
-    main_hook_module_register(&_hook_module);
-
-    return RT_EOK;
-}
-INIT_PREV_EXPORT(drv_usart_monitor_init);
