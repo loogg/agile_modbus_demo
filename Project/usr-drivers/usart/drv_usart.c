@@ -52,7 +52,7 @@ static rt_err_t _usart_init(usr_device_t dev)
     if(usart->init_ok)
         HAL_UART_DeInit(usart->config->handle);
     
-    usart->error = 0;
+    dev->error = 0;
     rt_ringbuffer_init(&(usart->tx_rb), usart->buffer.send_buf, usart->buffer.send_bufsz);
     usart->need_send = 0;
     rt_ringbuffer_init(&(usart->rx_rb), usart->buffer.read_buf, usart->buffer.read_bufsz);
@@ -89,7 +89,7 @@ static rt_size_t _usart_read(usr_device_t dev, rt_off_t pos, void *buffer, rt_si
         return 0;
     if(size == 0)
         return 0;
-    if(usart->error)
+    if(dev->error)
         return 0;
     
     rt_size_t len = 0;
@@ -110,7 +110,7 @@ static rt_size_t _usart_write(usr_device_t dev, rt_off_t pos, const void *buffer
         return 0;
     if(size == 0)
         return 0;
-    if(usart->error)
+    if(dev->error)
         return 0;
 
     rt_base_t level = rt_hw_interrupt_disable();
@@ -118,7 +118,7 @@ static rt_size_t _usart_write(usr_device_t dev, rt_off_t pos, const void *buffer
     {
         if ((rt_tick_get() - usart->tx_activated_timeout) < (RT_TICK_MAX / 2))
         {
-            usart->error = 1;
+            dev->error = 1;
             rt_hw_interrupt_enable(level);
             return 0;
         }
@@ -154,7 +154,7 @@ static rt_size_t _usart_write(usr_device_t dev, rt_off_t pos, const void *buffer
     rt_size_t send_len = rt_ringbuffer_peak(&(usart->tx_rb), &send_ptr, usart->need_send);
     if(send_len == 0)
     {
-        usart->error = 1;
+        dev->error = 1;
         rt_hw_interrupt_enable(level);
         return 0;
     }
@@ -274,6 +274,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     if(usart == RT_NULL)
         return;
 
+    usr_device_t dev = &(usart->parent);
     int result = -RT_ERROR;
     do
     {
@@ -281,14 +282,14 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
             break;
         if(usart->need_send == 0)
             break;
-        if(usart->error)
+        if(dev->error)
             break;
         
         rt_uint8_t *send_ptr = RT_NULL;
         rt_size_t send_len = rt_ringbuffer_peak(&(usart->tx_rb), &send_ptr, usart->need_send);
         if(send_len == 0)
         {
-            usart->error = 1;
+            dev->error = 1;
             break;
         }
         usart->need_send -= send_len;
@@ -318,7 +319,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     struct usr_device_usart *usart = get_drv_by_handle(huart);
     if(usart == RT_NULL)
         return;
-    if(usart->error)
+    
+    usr_device_t dev = &(usart->parent);
+    if(dev->error)
         return;
     
     rt_ringbuffer_putchar(&(usart->rx_rb), usart->ignore_data);
@@ -335,7 +338,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     if(usart == RT_NULL)
         return;
     
-    usart->error = 1;
+    usr_device_t dev = &(usart->parent);
+    dev->error = 1;
 }
 
 void DMA1_Channel4_IRQHandler(void)

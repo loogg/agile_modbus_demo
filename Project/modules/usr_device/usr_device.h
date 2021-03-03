@@ -8,6 +8,8 @@ struct usr_device
 {
     char name[RT_NAME_MAX];
 
+    rt_uint8_t error;
+    
     /* device call back */
     rt_err_t (*rx_indicate)(usr_device_t dev, rt_size_t size);
     rt_err_t (*tx_complete)(usr_device_t dev, void *buffer);

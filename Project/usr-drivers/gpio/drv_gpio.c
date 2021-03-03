@@ -165,7 +165,7 @@ static rt_err_t _pin_control(usr_device_t dev, int cmd, void *args)
     return RT_EOK;
 }
 
-static struct usr_device_pin _hw_pin;
+static struct usr_device_pin _hw_pin = {0};
 
 static int drv_hw_pin_init(void)
 {

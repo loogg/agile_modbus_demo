@@ -49,7 +49,6 @@ struct usr_device_usart
 {
     struct usr_device parent;
     rt_uint8_t init_ok;
-    rt_uint8_t error;
     rt_uint8_t ignore_data;
     struct usr_device_usart_buffer buffer;
     struct rt_ringbuffer tx_rb;
