@@ -13,8 +13,8 @@
 #define OLED_DC_PIN         8
 #define OLED_CS_PIN         9
 
-SPI_HandleTypeDef hspi2;
-DMA_HandleTypeDef hdma_spi2_tx;
+SPI_HandleTypeDef hspi3;
+DMA_HandleTypeDef hdma_spi3_tx;
 
 ALIGN(RT_ALIGN_SIZE)
 static rt_uint8_t oled_gram[8][128] = {0};
@@ -27,7 +27,7 @@ static void _oled_hw_init(void)
     rt_base_t level = rt_hw_interrupt_disable();
 
     if(init_ok)
-        HAL_SPI_DeInit(&hspi2);
+        HAL_SPI_DeInit(&hspi3);
     
     drv_pin_mode(OLED_RES_PIN, PIN_MODE_OUTPUT);
     drv_pin_write(OLED_RES_PIN, PIN_HIGH);
@@ -38,20 +38,20 @@ static void _oled_hw_init(void)
     drv_pin_mode(OLED_CS_PIN, PIN_MODE_OUTPUT);
     drv_pin_write(OLED_CS_PIN, PIN_HIGH);
 
-    hspi2.Instance = SPI2;
-    hspi2.Init.Mode = SPI_MODE_MASTER;
-    hspi2.Init.Direction = SPI_DIRECTION_2LINES;
-    hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-    hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
-    hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
-    hspi2.Init.NSS = SPI_NSS_SOFT;
-    hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
-    hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
-    hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
-    hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-    hspi2.Init.CRCPolynomial = 10;
-    HAL_SPI_Init(&hspi2);
-    HAL_SPI_Abort(&hspi2);
+    hspi3.Instance = SPI3;
+    hspi3.Init.Mode = SPI_MODE_MASTER;
+    hspi3.Init.Direction = SPI_DIRECTION_2LINES;
+    hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
+    hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
+    hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
+    hspi3.Init.NSS = SPI_NSS_SOFT;
+    hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+    hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
+    hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
+    hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+    hspi3.Init.CRCPolynomial = 10;
+    HAL_SPI_Init(&hspi3);
+    HAL_SPI_Abort(&hspi3);
 
     init_ok = 1;
 
@@ -65,8 +65,8 @@ static void _oled_write_cmd(rt_uint8_t cmd)
     drv_pin_write(OLED_DC_PIN, PIN_LOW);
     drv_pin_write(OLED_CS_PIN, PIN_LOW);
 
-    HAL_SPI_Abort(&hspi2);
-    HAL_SPI_Transmit(&hspi2, &cmd, 1, 1000);
+    HAL_SPI_Abort(&hspi3);
+    HAL_SPI_Transmit(&hspi3, &cmd, 1, 1000);
 
     drv_pin_write(OLED_CS_PIN, PIN_HIGH);
     drv_pin_write(OLED_DC_PIN, PIN_HIGH);
@@ -81,8 +81,8 @@ static void _oled_refresh_gram(void)
     drv_pin_write(OLED_DC_PIN, PIN_HIGH);
     drv_pin_write(OLED_CS_PIN, PIN_LOW);
 
-    HAL_SPI_Abort(&hspi2);
-    HAL_SPI_Transmit_DMA(&hspi2, oled_gram[0], sizeof(oled_gram));
+    HAL_SPI_Abort(&hspi3);
+    HAL_SPI_Transmit_DMA(&hspi3, oled_gram[0], sizeof(oled_gram));
 }
 
 static rt_err_t _oled_init(usr_device_t dev)
@@ -178,12 +178,12 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
         oled_device.parent.tx_complete(&(oled_device.parent), RT_NULL);
 }
 
-void DMA1_Channel5_IRQHandler(void)
+void DMA2_Channel2_IRQHandler(void)
 {
     /* enter interrupt */
     rt_interrupt_enter();
 
-    HAL_DMA_IRQHandler(&hdma_spi2_tx);
+    HAL_DMA_IRQHandler(&hdma_spi3_tx);
 
     /* leave interrupt */
     rt_interrupt_leave();
