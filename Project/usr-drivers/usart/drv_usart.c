@@ -140,11 +140,6 @@ static rt_size_t _usart_write(usr_device_t dev, rt_off_t pos, const void *buffer
     rt_ringbuffer_put_raw(&(usart->tx_rb), write_index, buffer, put_len);
     
     level = rt_hw_interrupt_disable();
-    if(usart->tx_activated != RT_TRUE)
-    {
-        rt_hw_interrupt_enable(level);
-        return 0;
-    }
     usart->need_send += put_len;
     if(tx_activated == RT_TRUE)
     {
