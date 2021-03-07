@@ -1,5 +1,4 @@
 #include <rtthread.h>
-#include "main_hook.h"
 #include <stdlib.h>
 #include <time.h>
 
@@ -21,7 +20,7 @@ time_t time(time_t *t)
     return run_time;
 }
 
-static void calc_runtime(void)
+static void main_hook_cb(void)
 {
     static rt_tick_t prev_tick = 0;
     static rt_tick_t redress = 0;
@@ -52,12 +51,14 @@ static int get_runtime(void)
 }
 MSH_CMD_EXPORT(get_runtime, get runtime);
 
-static struct main_hook_module _hook_module;
+#include "main_hook.h"
+
+static struct main_hook_module runtime_main_hook_module;
 
 static int runtime_init(void)
 {
-    _hook_module.hook = calc_runtime;
-    main_hook_module_register(&_hook_module);
+    runtime_main_hook_module.hook = main_hook_cb;
+    main_hook_module_register(&runtime_main_hook_module);
 
     return RT_EOK;
 }
