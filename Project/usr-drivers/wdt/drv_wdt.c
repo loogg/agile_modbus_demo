@@ -3,7 +3,7 @@
 
 static IWDG_HandleTypeDef hiwdg;
 
-static void feed_wdt(void)
+static void idle_hook_cb(void)
 {
 #define FEED_WDT_CYCLE  1
 
@@ -28,7 +28,7 @@ static int drv_wdt_init(void)
         HAL_NVIC_SystemReset();
     }
 
-    rt_thread_idle_sethook(feed_wdt);
+    rt_thread_idle_sethook(idle_hook_cb);
     
     return RT_EOK;
 }
