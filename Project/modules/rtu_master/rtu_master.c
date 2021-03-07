@@ -72,7 +72,6 @@ static int _usart_pass(rt_uint8_t *send_buf, int send_len, rt_uint8_t *read_buf,
     if((send_buf == RT_NULL) || (send_len <= 0) || (read_buf == RT_NULL) || (read_bufsz <= 0) || (timeout <= 0))
         return -RT_ERROR;
     
-    usr_device_control(dev, USR_DEVICE_USART_CMD_FLUSH, RT_NULL);
     usr_device_write(dev, 0, send_buf, send_len);
     int read_len = _usart_receive(read_buf, read_bufsz, timeout);
 
@@ -85,27 +84,19 @@ static void rtu_master_entry(void *parameter)
     agile_modbus_rtu_init(&ctx, ctx_send_buf, sizeof(ctx_send_buf), ctx_read_buf, sizeof(ctx_read_buf));
     agile_modbus_set_slave(&(ctx._ctx), 1);
 
-    rt_uint16_t hold_register[10];
+    rt_uint16_t hold_register[100];
     while(1)
     {
-        rt_thread_mdelay(1000);
+        rt_thread_mdelay(10);
 
         send_count++;
-        int send_len = agile_modbus_serialize_read_registers(&(ctx._ctx), 0, 10);
+        int send_len = agile_modbus_serialize_read_registers(&(ctx._ctx), 0, 100);
         int read_len = _usart_pass(ctx._ctx.send_buf, send_len, ctx._ctx.read_buf, ctx._ctx.read_bufsz, 1000);
         int rc = agile_modbus_deserialize_read_registers(&(ctx._ctx), read_len, hold_register);
 
-        if(rc == 10)
+        if(rc == 100)
         {
             success_count++;
-
-            LOG_I("read %d hold registers", rc);
-            
-            rt_kprintf("values:\r\n");
-            for (int i = 0; i < rc; i++)
-            {
-                rt_kprintf("Register %d: %02X\r\n", i, hold_register[i]);
-            }
         }
     }
 }
