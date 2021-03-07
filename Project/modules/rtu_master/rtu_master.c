@@ -1,5 +1,4 @@
 #include "drv_usart.h"
-#include "init_module.h"
 #include "agile_modbus.h"
 
 #define DBG_ENABLE
@@ -150,7 +149,9 @@ static int rtu_master_init(void)
     return RT_EOK;
 }
 
-static struct init_module rtu_master_init_module;
+#include "init_module.h"
+
+static struct init_module rtu_master_init_module = {0};
 
 static int rtu_master_init_module_register(void)
 {

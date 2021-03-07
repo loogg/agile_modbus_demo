@@ -30,17 +30,27 @@ char rt_hw_console_getchar(void)
     
     char ch = 0;
 
-    while(1)
-    {
-        if(usr_device_read(dev, 0, &ch, 1) == 1)
-            break;
-        
-        rt_sem_control(&rx_sem, RT_IPC_CMD_RESET, RT_NULL);
+    while(usr_device_read(dev, 0, &ch, 1) == 0)
+    {   
         rt_sem_take(&rx_sem, rt_tick_from_millisecond(5000));
+        rt_sem_control(&rx_sem, RT_IPC_CMD_RESET, RT_NULL);
     }
 
     return ch;
 }
+
+static void main_hook_cb(void)
+{
+    if(!init_ok)
+        return;
+    
+    if(dev->error)
+        usr_device_init(dev);
+}
+
+#include "main_hook.h"
+
+static struct main_hook_module console_main_hook_module = {0};
 
 int console_init(void)
 {
@@ -64,6 +74,9 @@ int console_init(void)
     parameter.stblen = UART_STOPBITS_1;
     usr_device_control(dev, USR_DEVICE_USART_CMD_SET_PARAMETER, &parameter);
     usr_device_init(dev);
+
+    console_main_hook_module.hook = main_hook_cb;
+    main_hook_module_register(&console_main_hook_module);
 
     init_ok = 1;
 

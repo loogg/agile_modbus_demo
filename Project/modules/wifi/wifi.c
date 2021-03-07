@@ -1,7 +1,6 @@
 #include "wifi.h"
 #include "drv_gpio.h"
 #include "drv_usart.h"
-#include "init_module.h"
 #include <string.h>
 #include <stdio.h>
 #include <rthw.h>
@@ -1033,16 +1032,35 @@ static int wifi_init(void)
     return RT_EOK;
 }
 
-static struct init_module wifi_init_module;
-
-static int wifi_init_module_register(void)
+static void main_hook_cb(void)
 {
+    if(!wifi_device.init_ok)
+        return;
+    
+    if(wifi_device.client->dev->error)
+    {
+        LOG_E("%s error:0x%02X", wifi_device.client->dev->name, wifi_device.client->dev->error);
+        usr_device_init(wifi_device.client->dev);
+    }
+}
+
+#include "main_hook.h"
+#include "init_module.h"
+
+static struct main_hook_module wifi_main_hook_module = {0};
+static struct init_module wifi_init_module = {0};
+
+static int wifi_module_register(void)
+{
+    wifi_main_hook_module.hook = main_hook_cb;
+    main_hook_module_register(&wifi_main_hook_module);
+
     wifi_init_module.init = wifi_init;
     init_module_app_register(&wifi_init_module);
 
     return RT_EOK;
 }
-INIT_PREV_EXPORT(wifi_init_module_register);
+INIT_PREV_EXPORT(wifi_module_register);
 
 static int print_wifi_param(void)
 {

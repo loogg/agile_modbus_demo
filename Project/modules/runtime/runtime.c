@@ -53,7 +53,7 @@ MSH_CMD_EXPORT(get_runtime, get runtime);
 
 #include "main_hook.h"
 
-static struct main_hook_module runtime_main_hook_module;
+static struct main_hook_module runtime_main_hook_module = {0};
 
 static int runtime_init(void)
 {

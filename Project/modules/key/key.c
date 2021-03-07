@@ -1,5 +1,4 @@
 #include <agile_button.h>
-#include "init_module.h"
 #include "wifi.h"
 
 #define KEY_PIN                 2
@@ -28,7 +27,9 @@ static int key_init(void)
     return RT_EOK;
 }
 
-static struct init_module key_init_module;
+#include "init_module.h"
+
+static struct init_module key_init_module = {0};
 
 static int key_init_module_register(void)
 {

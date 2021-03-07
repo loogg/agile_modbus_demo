@@ -1,6 +1,5 @@
 #include "led.h"
 #include <agile_led.h>
-#include "init_module.h"
 
 #define D0_LED_PIN      0
 #define D1_LED_PIN      1
@@ -115,7 +114,9 @@ static int led_init(void)
     return RT_EOK;
 }
 
-static struct init_module led_init_module;
+#include "init_module.h"
+
+static struct init_module led_init_module = {0};
 
 static int led_init_module_register(void)
 {
